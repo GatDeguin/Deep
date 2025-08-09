@@ -3,17 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Caja 3D (15 cm) — Parallax + Eye Tracking</title>
+  <title>Caja 3D (15 cm) — Parallax + Eye Tracking (v3.3)</title>
   <style>
-    :root{
-      --bg:#0b0c10; --fg:#eaeef7; --muted:#8aa0b5; --accent:#6dd3ff; --ok:#55efc4; --warn:#ffd166; --err:#ff6b6b;
-    }
+    :root{ --bg:#0a0b10; --fg:#eaeef7; --muted:#90a3b6; --accent:#6dd3ff; }
     html, body { height:100%; }
-    body { margin:0; background:#000; color:var(--fg); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+    body { margin:0; background:#000; color:var(--fg); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
     #app { position:fixed; inset:0; overflow:hidden; }
-    #three { width:100%; height:100%; display:block; }
-
-    /* UI flotante */
+    #three { width:100%; height:100%; display:block; touch-action:none; }
     .ui { position:fixed; left:0; right:0; bottom:0; padding:10px env(safe-area-inset-right) calc(10px + env(safe-area-inset-bottom)) env(safe-area-inset-left);
       display:flex; gap:8px; flex-wrap:wrap; align-items:center; justify-content:center; pointer-events:auto; }
     .panel { backdrop-filter: blur(14px) saturate(1.2); background: rgba(10,12,20,.55); border:1px solid rgba(255,255,255,.12);
@@ -27,17 +23,12 @@
     .field { display:flex; align-items:center; gap:8px; }
     .field label { font-size:12px; color:var(--muted); }
     .field input[type="range"] { width:120px; }
-
-    #toast { position:fixed; top:10px; left:0; right:0; margin:auto; width:max(260px, 40vw); text-align:center; pointer-events:none; }
-    #toast .msg { display:inline-block; padding:10px 14px; border-radius:12px; background:rgba(15,18,30,.75); border:1px solid rgba(255,255,255,.12); }
+    #toast { position:fixed; top:10px; left:0; right:0; margin:auto; width:max(260px, 90vw); text-align:center; pointer-events:none; }
+    #toast .msg { display:inline-block; padding:10px 14px; border-radius:12px; background:rgba(15,18,30,.85); border:1px solid rgba(255,255,255,.12); }
     #stats { position:fixed; top:0; right:0; padding:8px 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size:12px; opacity:.85; }
-
-    /* Video y debug (ocultos por defecto) */
     #webcam { position:fixed; right:8px; top:8px; width:200px; height:auto; transform:scaleX(-1); border-radius:10px; border:1px solid rgba(255,255,255,.12); display:none; }
     #debug { position:fixed; right:8px; top:8px; width:200px; height:auto; display:none; pointer-events:none; }
-
-    /* Bisel / máscara para simular marco del teléfono */
-    .bezel { position:fixed; inset:0; pointer-events:none; box-shadow: inset 0 0 0 12px rgba(0,0,0,.85), inset 0 0 32px rgba(0,0,0,.85), inset 0 0 120px rgba(0,0,0,.85); border-radius: calc(24px + env(safe-area-inset-left)); }
+    .bezel { position:fixed; inset:0; pointer-events:none; box-shadow: inset 0 0 0 12px rgba(0,0,0,.85), inset 0 0 32px rgba(0,0,0,.85), inset 0 0 120px rgba(0,0,0,.85); border-radius: 24px; }
   </style>
 </head>
 <body>
@@ -46,15 +37,31 @@
     <div class="bezel" aria-hidden="true"></div>
   </div>
 
-  <!-- UI -->
   <div class="ui">
     <div class="panel">
       <div class="seg" id="inputMode">
-        <button data-mode="camera" title="Tracking de ojos por cámara">Cámara</button>
-        <button data-mode="gyro" title="Parallax por giroscopio">Giroscopio</button>
+        <button data-mode="camera">Cámara</button>
+        <button data-mode="gyro">Giroscopio</button>
+        <button data-mode="mouse">Mouse</button>
+      </div>
+      <div class="seg" id="quality">
+        <button data-q="perf">Perf</button>
+        <button data-q="bal">Bal</button>
+        <button data-q="ultra">Ultra</button>
+      </div>
+      <div class="seg" id="object">
+        <button data-k="pyr">Pyr</button>
+        <button data-k="cube">Cube</button>
+        <button data-k="ico">Ico</button>
       </div>
       <button class="btn" id="toggleDebug">Debug</button>
       <button class="btn" id="calibrate">Calibrar</button>
+      <button class="btn" id="toggleShadows">Sombras</button>
+      <button class="btn" id="toggleBloom">Bloom</button>
+      <button class="btn" id="toggleGrid">Grid</button>
+      <button class="btn" id="mirrorX">Mirror X</button>
+      <button class="btn" id="reset">Reset</button>
+      <button class="btn" id="shot">📷</button>
       <div class="field slider">
         <label for="screenW">Ancho pantalla (cm)</label>
         <input id="screenW" type="range" min="5" max="9" step="0.1" value="7" />
@@ -75,6 +82,16 @@
         <input id="smoothing" type="range" min="0" max="0.6" step="0.02" value="0.18" />
         <span id="smoothingVal">0.18</span>
       </div>
+      <div class="field slider">
+        <label for="exposure">Exposición</label>
+        <input id="exposure" type="range" min="0.5" max="2.0" step="0.01" value="1.0" />
+        <span id="exposureVal">1.00</span>
+      </div>
+      <div class="field slider">
+        <label for="bloomStrength">Bloom</label>
+        <input id="bloomStrength" type="range" min="0.0" max="2.0" step="0.01" value="0.6" />
+        <span id="bloomStrengthVal">0.60</span>
+      </div>
     </div>
   </div>
 
@@ -83,7 +100,9 @@
   <video id="webcam" autoplay playsinline muted></video>
   <canvas id="debug"></canvas>
 
-  <!-- THREE.JS (ESM) -->
+  <!-- Polyfill de import maps (contenido inline eliminado intencionalmente) -->
+  <script async crossorigin="anonymous" src="https://ga.jspm.io/npm:es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+
   <script type="importmap">
   {
     "imports": {
@@ -92,361 +111,330 @@
     }
   }
   </script>
+
   <script type="module">
     import * as THREE from 'three';
     import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+    import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
-    // ====== Utiles ======
+    // Helper global-local (ahora sí se ejecuta; antes estaba dentro de un <script src> y el navegador lo ignoraba)
+    const need = (id) => {
+      const el = document.getElementById(id);
+      if (!el) throw new Error(`Falta #${id}; en el DOM`);
+      return el;
+    };
+
     const lerp = (a,b,t)=>a+(b-a)*t;
     const clamp = (v,lo,hi)=>Math.min(hi, Math.max(lo,v));
+    const $ = (id)=>document.getElementById(id);
 
-    // ====== Canvas y renderer ======
-    const canvas = document.getElementById('three');
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:false, powerPreference:'high-performance' });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-    renderer.setSize(innerWidth, innerHeight);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.physicallyCorrectLights = true;
-
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x05060a);
-
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    const env = new RoomEnvironment(renderer);
-    const envTex = pmrem.fromScene(env, 0.04).texture;
-    scene.environment = envTex;
-
-    // ====== Cámara con proyección off-axis ======
-    const near = 0.01, far = 2.5; // suficiente para 15-20 cm de caja
-    const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, near, far);
-    camera.position.set(0, 0, 0.4); // 40 cm frente a la pantalla
-
-    // Tamaño "físico" de la pantalla en metros (ajustable por UI)
-    let screenW_cm = 7.0;
-    const screen = { w: screenW_cm/100, h: (screenW_cm/100) * (innerHeight/innerWidth) };
-    let boxDepth_cm = 15.0; // UI
-
-    function updateScreenMeters(){
-      screen.w = (screenW_cm/100);
-      screen.h = screen.w * (innerHeight/innerWidth);
+    // Arreglo de strict mode: el else ahora tiene un bloque real
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', main);
+    } else {
+      main();
     }
 
-    function makePerspectiveOffCenter(cam, left, right, bottom, top, near, far){
-      const x = 2*near/(right-left);
-      const y = 2*near/(top-bottom);
-      const a = (right+left)/(right-left);
-      const b = (top+bottom)/(top-bottom);
-      const c = -(far+near)/(far-near);
-      const d = -2*far*near/(far-near);
-      cam.projectionMatrix.set(
-        x, 0, a, 0,
-        0, y, b, 0,
-        0, 0, c, d,
-        0, 0,-1, 0
-      );
+    function ensureContainer(){
+      let app = need('app');
+      if(!app){ app = document.createElement('div'); app.id='app'; app.style.position='fixed'; app.style.inset='0'; app.style.overflow='hidden'; document.body.appendChild(app); }
+      let canvas = need('three');
+      if(!canvas){ canvas = document.createElement('canvas'); canvas.id='three'; app.prepend(canvas); }
+      let bezel = document.querySelector('.bezel');
+      if(!bezel){ bezel = document.createElement('div'); bezel.className='bezel'; app.appendChild(bezel); }
+      return { app, canvas };
     }
 
-    // ====== Caja y escena ======
-    const group = new THREE.Group();
-    scene.add(group);
+    function main(){
+      const { app, canvas } = ensureContainer();
 
-    // Caja interior (mirada desde arriba, tapa abierta en z=0)
-    function makeBox(){
-      group.clear();
-      const depth = boxDepth_cm/100; // m
-      const w = screen.w, h = screen.h, d = depth;
-      // Paredes (BackSide para ver interior)
-      const wallMat = new THREE.MeshPhysicalMaterial({ color:0x0b0c10, roughness:0.9, metalness:0.0, side:THREE.BackSide, clearcoat:0.2, clearcoatRoughness:0.7 });
-      const boxGeo = new THREE.BoxGeometry(w, h, d);
-      const walls = new THREE.Mesh(boxGeo, wallMat);
-      walls.position.set(0,0,-d/2);
-      group.add(walls);
+      // --- Persistencia primero (para poder usar `state` en makeBox) ---
+      const save = ()=>localStorage.setItem('holoBox:v33', JSON.stringify(stateToPersist()));
+      const load = ()=>{ try{ return JSON.parse(localStorage.getItem('holoBox:v33')||'{}'); }catch{ return {} } };
+      const defaults = { mode:'camera', quality:'bal', object:'pyr', shadowsOn:false, gridOn:false, mirror:false, bloomOn:false, screenW:7.0, dist:40, depth:15, smoothing:0.18, exposure:1.0, bloomStrength:0.6 };
+      const state = Object.assign({}, defaults, load());
 
-      // Suelo ligeramente brillante
-      const floorMat = new THREE.MeshPhysicalMaterial({ color:0x0d1117, roughness:0.6, metalness:0.2, reflectivity:0.4 });
-      const floor = new THREE.Mesh(new THREE.PlaneGeometry(w*0.98, h*0.98), floorMat);
-      floor.rotation.x = -Math.PI/2;
-      floor.position.set(0, -h/2 + 0.002, -d + 0.001);
-      group.add(floor);
+      // --- Renderer/Escena/Cámara ---
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:false, powerPreference:'high-performance' });
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.physicallyCorrectLights = true;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      let targetDPR = Math.min(devicePixelRatio, 2);
+      renderer.setPixelRatio(targetDPR);
+      renderer.setSize(innerWidth, innerHeight);
 
-      // Pirámide de cristal (base cuadrada)
-      const pyrH = Math.min(d*0.66, h*0.6);
-      const pyrR = Math.min(w,h)*0.16;
-      const pyrGeo = new THREE.ConeGeometry(pyrR, pyrH, 4, 1, false);
-      pyrGeo.rotateY(Math.PI/4); // alinear a base cuadrada
-      const glass = new THREE.MeshPhysicalMaterial({
-        color:0xffffff,
-        metalness:0.0,
-        roughness:0.08,
-        transmission:1.0,
-        thickness:0.02,
-        ior:1.5,
-        envMapIntensity:1.2,
-        attenuationColor: new THREE.Color(0xa5d8ff),
-        attenuationDistance: 2.0,
-        reflectivity: 0.1,
-        clearcoat: 1.0,
-        clearcoatRoughness: 0.1
-      });
-      const pyramid = new THREE.Mesh(pyrGeo, glass);
-      pyramid.position.set(0, 0, -d*0.55);
-      group.add(pyramid);
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x05060a);
 
-      // Luz suave y acentos
-      const hemi = new THREE.HemisphereLight(0x99bbff, 0x101318, 0.6);
-      scene.add(hemi);
-      const key = new THREE.SpotLight(0x9cc9ff, 1.1, 3.0, Math.PI/6, 0.35, 1.0);
-      key.position.set(w*0.3, h*0.35, 0.25);
-      key.target = pyramid;
-      scene.add(key);
-      const rim = new THREE.DirectionalLight(0xffffff, 0.4);
-      rim.position.set(-w*0.5, -h*0.6, -d*0.4);
-      scene.add(rim);
-    }
-    makeBox();
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      const env = new RoomEnvironment(renderer);
+      const envTex = pmrem.fromScene(env, 0.04).texture;
+      scene.environment = envTex;
 
-    // ====== Seguimiento de "ojos" (entrada fusionada) ======
-    const eye = { x:0, y:0, z:0.40 }; // metros, relativo al centro de pantalla
-    const targetEye = { x:0, y:0, z:0.40 };
-    let smooth = 0.18;
+      const near = 0.01, far = 2.5;
+      const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, near, far);
+      camera.position.set(0, 0, 0.4);
 
-    // Proyección off-axis según posición del ojo
-    function updateCameraProjection(){
-      // límites del rectángulo de la pantalla en Z=0
-      const halfW = screen.w/2, halfH = screen.h/2;
-      const n = near, f = far;
-      const z = Math.max(0.05, eye.z); // evitar división por cero
-      const left   = n * (-halfW - eye.x) / z;
-      const right  = n * ( halfW - eye.x) / z;
-      const bottom = n * (-halfH - eye.y) / z;
-      const top    = n * ( halfH - eye.y) / z;
-      makePerspectiveOffCenter(camera, left, right, bottom, top, n, f);
-      // mantén cámara mirando perpendicular al plano de la pantalla
-      camera.position.set(eye.x, eye.y, eye.z);
-      camera.lookAt(eye.x, eye.y, 0);
-    }
+      // --- Variables derivadas de estado (antes de makeBox) ---
+      let screenW_cm = +state.screenW;
+      const screen = { w: screenW_cm/100, h: (screenW_cm/100) * (innerHeight/innerWidth) };
+      let boxDepth_cm = +state.depth;
+      let currentObject = state.object;
+      let mirror = !!state.mirror;
 
-    // ====== Gyro fallback ======
-    let gyroEnabled = false;
-    function enableGyro(){
-      function handler(ev){
-        const g = (ev.gamma||0); // izq-der (-90 a 90)
-        const b = (ev.beta||0);  // arriba-abajo (-180 a 180)
-        // Mapea a +/- 1 cm en X/Y
-        targetEye.x = clamp((g/30) * (screen.w*0.15), -screen.w*0.2, screen.w*0.2);
-        targetEye.y = clamp((b/45) * (screen.h*0.15), -screen.h*0.2, screen.h*0.2);
+      function updateScreenMeters(){
+        screen.w = (screenW_cm/100);
+        screen.h = screen.w * (innerHeight/innerWidth);
+        if(grid) { grid.scale.set(screen.w*0.98, 1, screen.h*0.98); }
       }
-      if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function'){
-        DeviceMotionEvent.requestPermission().then(state=>{
-          if(state==='granted'){
-            window.addEventListener('deviceorientation', handler);
-            gyroEnabled = true; toast('Giroscopio activo');
-          } else toast('Permiso de giroscopio denegado', true);
-        }).catch(()=>toast('Giroscopio no disponible', true));
-      }else{
-        window.addEventListener('deviceorientation', handler);
-        gyroEnabled = true; toast('Giroscopio activo');
+
+      function makePerspectiveOffCenter(cam, left, right, bottom, top, near, far){
+        const x = 2*near/(right-left), y = 2*near/(top-bottom), a = (right+left)/(right-left), b = (top+bottom)/(top-bottom), c = -(far+near)/(far-near), d = -2*far*near/(far-near);
+        cam.projectionMatrix.set(x,0,a,0, 0,y,b,0, 0,0,c,d, 0,0,-1,0);
       }
-    }
 
-    // ====== Face tracking (MediaPipe FaceMesh en script no-módulo) ======
-    let faceTrackEnabled = false;
-    const faceBridge = { // actualizado por el script global
-      ready:false,
-      cx:0.5, cy:0.5, ipd:0.06, // normalizados a [0..1] en el frame de la cámara
-    };
-    window.__setFace = (cx, cy, ipd)=>{ faceBridge.ready = true; faceBridge.cx = cx; faceBridge.cy = cy; faceBridge.ipd = ipd; };
+      // --- Escena de caja ---
+      const group = new THREE.Group(); scene.add(group);
+      const hemi = new THREE.HemisphereLight(0x99bbff, 0x101318, 0.6); scene.add(hemi);
+      const key = new THREE.SpotLight(0x9cc9ff, 1.1, 3.0, Math.PI/6, 0.35, 1.0); key.position.set(0.2,0.2,0.25); scene.add(key);
+      const rim = new THREE.DirectionalLight(0xffffff, 0.4); rim.position.set(-0.3,-0.4,-0.2); scene.add(rim);
 
-    async function enableCamera(){
-      const v = document.getElementById('webcam');
-      try{
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:'user', width:{ideal:640}, height:{ideal:480} }, audio:false });
-        v.srcObject = stream; v.play();
-        faceTrackEnabled = true; toast('Cámara activa (tracking de ojos)');
-      }catch(e){ toast('No se pudo acceder a la cámara', true); }
-    }
+      let obj, floor, walls, grid;
 
-    // ====== UI ======
-    const d = (id)=>document.getElementById(id);
-    const btnDebug = d('toggleDebug');
-    const btnCal = d('calibrate');
-    const rScreen = d('screenW');
-    const rDist = d('dist');
-    const rDepth = d('depth');
-    const rSmooth = d('smoothing');
-    const vScreen = d('screenWVal');
-    const vDist = d('distVal');
-    const vDepth = d('depthVal');
-    const vSmooth = d('smoothingVal');
-
-    vScreen.textContent = (+rScreen.value).toFixed(1);
-    vDist.textContent = rDist.value;
-    vDepth.textContent = rDepth.value;
-    vSmooth.textContent = rSmooth.value;
-
-    rScreen.oninput = ()=>{ screenW_cm = +rScreen.value; vScreen.textContent = screenW_cm.toFixed(1); updateScreenMeters(); makeBox(); };
-    rDist.oninput = ()=>{ targetEye.z = (+rDist.value)/100; vDist.textContent = rDist.value; };
-    rDepth.oninput = ()=>{ boxDepth_cm = +rDepth.value; vDepth.textContent = rDepth.value; makeBox(); };
-    rSmooth.oninput = ()=>{ smooth = +rSmooth.value; vSmooth.textContent = rSmooth.value; };
-
-    // Input mode toggle
-    const seg = document.getElementById('inputMode');
-    const [camBtn, gyroBtn] = seg.querySelectorAll('button');
-    function setMode(mode){
-      camBtn.dataset.active = (mode==='camera');
-      gyroBtn.dataset.active = (mode==='gyro');
-      if(mode==='camera'){
-        enableCamera();
-      } else {
-        enableGyro();
-      }
-    }
-    setMode('camera');
-
-    // Debug toggles webcam & overlay
-    let debugOn = false;
-    btnDebug.onclick = ()=>{
-      debugOn = !debugOn; btnDebug.dataset.on = debugOn;
-      document.getElementById('webcam').style.display = debugOn? 'block':'none';
-      document.getElementById('debug').style.display = debugOn? 'block':'none';
-    };
-
-    // Calibración simple: centra X/Y actuales y fija distancia al slider
-    btnCal.onclick = ()=>{
-      targetEye.x = 0; targetEye.y = 0; eye.x = 0; eye.y = 0; targetEye.z = (+rDist.value)/100; toast('Calibrado: vista centrada');
-    };
-
-    seg.onclick = (e)=>{
-      const b = e.target.closest('button'); if(!b) return; setMode(b.dataset.mode);
-    };
-
-    // ====== Bucle ======
-    let tPrev = performance.now();
-    function frame(t){
-      const dt = Math.min(0.05, (t - tPrev) / 1000);
-      tPrev = t;
-
-      // Actualizar target desde FaceMesh si activo
-      if(faceTrackEnabled && faceBridge.ready){
-        const cx = faceBridge.cx; // [0..1]
-        const cy = faceBridge.cy; // [0..1]
-        // mapeo: centro pantalla (0.5,0.5) ==> (0,0)
-        // invertir X por espejo (selfie)
-        const x = (0.5 - cx) * screen.w; // metros
-        const y = (cy - 0.5) * screen.h; // metros
-        targetEye.x = clamp(x, -screen.w*0.35, screen.w*0.35);
-        targetEye.y = clamp(y, -screen.h*0.35, screen.h*0.35);
-        // Profundidad opcional basada en IPD (aprox). 6.3 cm típico.
-        const ipdN = faceBridge.ipd; // en fracción del ancho del frame
-        if(ipdN>0){
-          const F = 0.45; // factor empírico
-          const est = clamp((0.063 / Math.max(0.02, ipdN)) * F, 0.25, 0.8); // metros
-          targetEye.z = 0.5*targetEye.z + 0.5*est; // mezcla con slider
+      function buildObject(kind, w, h, d){
+        currentObject = kind;
+        let mesh;
+        if(kind==='cube'){
+          const geo = new THREE.BoxGeometry(Math.min(w,h)*0.28, Math.min(w,h)*0.28, Math.min(w,h)*0.28);
+          const mat = new THREE.MeshPhysicalMaterial({ color:0xffffff, roughness:0.07, transmission:1.0, thickness:0.03, ior:1.5, clearcoat:1, clearcoatRoughness:0.08, attenuationColor:new THREE.Color(0xa5d8ff), attenuationDistance:2.0 });
+          mesh = new THREE.Mesh(geo, mat);
+        } else if(kind==='ico'){
+          const geo = new THREE.IcosahedronGeometry(Math.min(w,h)*0.18, 1);
+          const mat = new THREE.MeshPhysicalMaterial({ color:0xffffff, roughness:0.06, transmission:1.0, thickness:0.025, ior:1.5, clearcoat:1, clearcoatRoughness:0.08, attenuationColor:new THREE.Color(0xa5d8ff), attenuationDistance:2.0 });
+          mesh = new THREE.Mesh(geo, mat);
+        } else {
+          const pyrH = Math.min(d*0.66, h*0.6), pyrR = Math.min(w,h)*0.16;
+          const geo = new THREE.ConeGeometry(pyrR, pyrH, 4, 1, false); geo.rotateY(Math.PI/4);
+          const mat = new THREE.MeshPhysicalMaterial({ color:0xffffff, roughness:0.06, transmission:1.0, thickness:0.02, ior:1.5, envMapIntensity:1.2, attenuationColor:new THREE.Color(0xa5d8ff), attenuationDistance:2.0, reflectivity:0.1, clearcoat:1.0, clearcoatRoughness:0.08 });
+          mesh = new THREE.Mesh(geo, mat);
         }
+        mesh.position.set(0, 0, -(boxDepth_cm/100)*0.55);
+        return mesh;
       }
 
-      // Suavizado exponencial
-      const k = 1.0 - Math.pow(1.0 - clamp(smooth,0,0.6), dt*60);
-      eye.x = lerp(eye.x, targetEye.x, k);
-      eye.y = lerp(eye.y, targetEye.y, k);
-      eye.z = lerp(eye.z, targetEye.z, k);
+      function applyShadows(on){
+        renderer.shadowMap.enabled = on;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        key.castShadow = on; rim.castShadow = on; hemi.castShadow = false;
+        if(obj) obj.castShadow = on; if(floor) floor.receiveShadow = on;
+      }
 
-      updateCameraProjection();
+      function makeBox(){
+        group.clear();
+        const depth = boxDepth_cm/100; const w = screen.w, h = screen.h, d = depth;
 
-      renderer.setSize(innerWidth, innerHeight, false);
-      camera.aspect = innerWidth/innerHeight; // no afecta off-axis
-      renderer.render(scene, camera);
+        const wallMat = new THREE.MeshPhysicalMaterial({ color:0x0b0c10, roughness:0.9, metalness:0.0, side:THREE.BackSide, clearcoat:0.2, clearcoatRoughness:0.7 });
+        const boxGeo = new THREE.BoxGeometry(w, h, d);
+        walls = new THREE.Mesh(boxGeo, wallMat); walls.position.set(0,0,-d/2); group.add(walls);
 
-      // Stats
-      document.getElementById('stats').textContent = `eye: ${(eye.x*100).toFixed(1)}cm, ${(eye.y*100).toFixed(1)}cm, ${(eye.z*100).toFixed(0)}cm  | screen: ${screenW_cm.toFixed(1)}cm × ${(screen.h*100).toFixed(1)}cm`;
+        const floorMat = new THREE.MeshPhysicalMaterial({ color:0x0d1117, roughness:0.6, metalness:0.2, reflectivity:0.4 });
+        floor = new THREE.Mesh(new THREE.PlaneGeometry(w*0.98, h*0.98), floorMat); floor.rotation.x=-Math.PI/2; floor.position.set(0,-h/2+0.002,-d+0.001); group.add(floor);
 
+        grid = new THREE.GridHelper(Math.max(w,h), 24, 0x334455, 0x223344); grid.material.opacity=0.25; grid.material.transparent=true; grid.position.set(0,-h/2+0.0021,-d+0.001); grid.visible = !!state.gridOn; group.add(grid);
+
+        obj = buildObject(currentObject, w, h, d); group.add(obj);
+
+        key.position.set(w*0.3, h*0.35, 0.25); key.target = obj; rim.position.set(-w*0.5, -h*0.6, -d*0.4);
+
+        applyShadows(!!state.shadowsOn);
+      }
+
+      // ====== UI & Estado aplicado ======
+      const btnDebug = need('toggleDebug'), btnCal = need('calibrate'), btnShadows=need('toggleShadows'), btnBloom=need('toggleBloom'), btnGrid=need('toggleGrid');
+      const btnMirror=need('mirrorX'), btnReset=need('reset'), btnShot=need('shot');
+      const rExposure = need('exposure'), vExposure = need('exposureVal');
+      const rBloom = need('bloomStrength'), vBloom = need('bloomStrengthVal');
+      const rScreen = need('screenW'), rDist = need('dist'), rDepth = need('depth'), rSmooth = need('smoothing');
+      const vScreen = need('screenWVal'), vDist = need('distVal'), vDepth = need('depthVal'), vSmooth = need('smoothingVal');
+
+      rScreen.value = state.screenW; vScreen.textContent = (+rScreen.value).toFixed(1);
+      rDist.value = state.dist; vDist.textContent = rDist.value;
+      rDepth.value = state.depth; vDepth.textContent = rDepth.value;
+      rSmooth.value = state.smoothing; vSmooth.textContent = rSmooth.value;
+      rExposure.value = state.exposure; vExposure.textContent = (+rExposure.value).toFixed(2); renderer.toneMappingExposure = +rExposure.value;
+      rBloom.value = state.bloomStrength; vBloom.textContent = (+rBloom.value).toFixed(2);
+      btnShadows.dataset.on = state.shadowsOn; btnGrid.dataset.on = state.gridOn; btnBloom.dataset.on = state.bloomOn; btnMirror.dataset.on = mirror;
+
+      updateScreenMeters();
+      makeBox();
+
+      // --- Qué se guarda exactamente en localStorage (antes faltaba esta función) ---
+      function stateToPersist(){
+        return {
+          mode: state.mode,
+          quality: state.quality,
+          object: currentObject,
+          shadowsOn: (btnShadows.dataset.on === 'true'),
+          gridOn: (btnGrid.dataset.on === 'true'),
+          mirror: mirror,
+          bloomOn: (btnBloom.dataset.on === 'true'),
+          screenW: +rScreen.value,
+          dist: +rDist.value,
+          depth: +rDepth.value,
+          smoothing: +rSmooth.value,
+          exposure: +rExposure.value,
+          bloomStrength: +rBloom.value
+        };
+      }
+
+      // ====== Entradas ======
+      const eye = { x:0, y:0, z: (+state.dist)/100 }, targetEye = { x:0, y:0, z: (+state.dist)/100 };
+      let smooth = +state.smoothing;
+
+      function updateCameraProjection(){
+        const halfW = screen.w/2, halfH = screen.h/2; const n=near, f=far;
+        const z = Math.max(0.05, eye.z);
+        const left   = n * (-halfW - eye.x) / z;
+        const right  = n * ( halfW - eye.x) / z;
+        const bottom = n * (-halfH - eye.y) / z;
+        const top    = n * ( halfH - eye.y) / z;
+        makePerspectiveOffCenter(camera, left, right, bottom, top, n, f);
+        camera.position.set(eye.x, eye.y, eye.z); camera.lookAt(eye.x, eye.y, 0);
+      }
+
+      function enableGyro(){
+        function handler(ev){ const g = (ev.gamma||0), b=(ev.beta||0);
+          targetEye.x = clamp((g/30) * (screen.w*0.15), -screen.w*0.2, screen.w*0.2);
+          targetEye.y = clamp((b/45) * (screen.h*0.15), -screen.h*0.2, screen.h*0.2);
+        }
+        if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function'){
+          DeviceMotionEvent.requestPermission().then(state=>{ if(state==='granted'){ addEventListener('deviceorientation', handler); toast('Giroscopio activo'); } else toast('Permiso de giroscopio denegado', true); }).catch(()=>toast('Giroscopio no disponible', true));
+        } else { addEventListener('deviceorientation', handler); toast('Giroscopio activo'); }
+      }
+
+      function enableMouse(){ function onMove(e){ const nx=(e.clientX/innerWidth)*2-1, ny=(e.clientY/innerHeight)*2-1; targetEye.x=clamp(nx*screen.w*0.25, -screen.w*0.3, screen.w*0.3); targetEye.y=clamp(ny*screen.h*0.25, -screen.h*0.3, screen.h*0.3);} addEventListener('mousemove', onMove); toast('Parallax por mouse activo'); }
+
+      let faceTrackEnabled=false; const faceBridge = { ready:false, cx:0.5, cy:0.5, ipd:0.06 };
+      window.__setFace = (cx, cy, ipd)=>{ faceBridge.ready = true; faceBridge.cx = cx; faceBridge.cy = cy; faceBridge.ipd = ipd; };
+
+      async function enableCamera(){
+        const v = need('webcam');
+        try { const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:'user', width:{ideal:640}, height:{ideal:480} }, audio:false }); v.srcObject = stream; await v.play(); faceTrackEnabled = true; toast('Cámara activa (tracking de ojos)'); } catch(e){ toast('No se pudo acceder a la cámara', true); }
+      }
+
+      function setMode(mode){
+        state.mode = mode; save();
+        const [camBtn, gyroBtn, mouseBtn] = need('inputMode').querySelectorAll('button');
+        camBtn.dataset.active = (mode==='camera'); gyroBtn.dataset.active = (mode==='gyro'); mouseBtn.dataset.active = (mode==='mouse');
+        if(mode==='camera') enableCamera(); else if(mode==='gyro') enableGyro(); else if(mode==='mouse') enableMouse();
+      }
+      need('inputMode').onclick = (e)=>{ const b=e.target.closest('button'); if(!b) return; setMode(b.dataset.mode); };
+      setMode(state.mode);
+
+      function applyQuality(q){
+        state.quality = q; save();
+        need('quality').querySelectorAll('button').forEach(b=>b.dataset.active = (b.dataset.q===q));
+        if(q==='perf'){ targetDPR = Math.min(1.0, devicePixelRatio); renderer.setPixelRatio(targetDPR); applyShadows(false); btnBloom.dataset.on=false; }
+        else if(q==='bal'){ targetDPR = Math.min(1.5, devicePixelRatio); renderer.setPixelRatio(targetDPR); }
+        else { targetDPR = Math.min(2.0, devicePixelRatio); renderer.setPixelRatio(targetDPR); }
+      }
+      need('quality').onclick = (e)=>{ const b=e.target.closest('button'); if(!b) return; applyQuality(b.dataset.q); };
+      applyQuality(state.quality);
+
+      function setObject(k){ currentObject = k; document.querySelectorAll('#object button').forEach(b=>b.dataset.active = (b.dataset.k===k)); makeBox(); save(); }
+      need('object').onclick = (e)=>{ const b=e.target.closest('button'); if(!b) return; setObject(b.dataset.k); };
+      setObject(state.object);
+
+      let composer, bloomPass;
+      btnDebug.onclick = ()=>{ const on = !(btnDebug.dataset.on==='true'); btnDebug.dataset.on = on; need('webcam').style.display = on? 'block':'none'; need('debug').style.display = on? 'block':'none'; };
+      btnShadows.onclick = ()=>{ const on = !(btnShadows.dataset.on==='true'); btnShadows.dataset.on = on; applyShadows(on); save(); };
+      btnBloom.onclick = ()=>{ const on = !(btnBloom.dataset.on==='true'); btnBloom.dataset.on = on; save(); if(on && !composer){ composer = new EffectComposer(renderer); composer.setSize(innerWidth, innerHeight); const renderPass = new RenderPass(scene, camera); bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), parseFloat(need('bloomStrength').value), 0.4, 0.85); const out = new OutputPass(); composer.addPass(renderPass); composer.addPass(bloomPass); composer.addPass(out); } };
+      btnGrid.onclick = ()=>{ if(grid){ grid.visible = !grid.visible; btnGrid.dataset.on = grid.visible; save(); } };
+      btnMirror.onclick = ()=>{ mirror = !mirror; btnMirror.dataset.on = mirror; save(); };
+      btnCal.onclick = ()=>{ targetEye.x=0; targetEye.y=0; eye.x=0; eye.y=0; toast('Calibrado'); save(); };
+      btnReset.onclick = ()=>{ localStorage.removeItem('holoBox:v33'); location.reload(); };
+      btnShot.onclick = ()=>{ try{ const url = renderer.domElement.toDataURL('image/png'); const a=document.createElement('a'); a.href=url; a.download='holoBox_v33.png'; a.click(); }catch(e){ toast('No se pudo capturar', true);} };
+
+      rScreen.oninput = ()=>{ screenW_cm = +rScreen.value; vScreen.textContent = (+rScreen.value).toFixed(1); updateScreenMeters(); makeBox(); save(); };
+      rDist.oninput = ()=>{ targetEye.z = (+rDist.value)/100; vDist.textContent = rDist.value; save(); };
+      rDepth.oninput = ()=>{ boxDepth_cm = +rDepth.value; vDepth.textContent = rDepth.value; makeBox(); save(); };
+      rSmooth.oninput = ()=>{ smooth = +rSmooth.value; vSmooth.textContent = rSmooth.value; save(); };
+      rExposure.oninput = ()=>{ renderer.toneMappingExposure = +rExposure.value; vExposure.textContent = (+rExposure.value).toFixed(2); save(); };
+      rBloom.oninput = ()=>{ vBloom.textContent = (+rBloom.value).toFixed(2); save(); };
+
+      // ====== Loop ======
+      let tPrev = performance.now(), fpsAvg = 60;
+      function frame(t){
+        const dt = Math.min(0.05, (t - tPrev) / 1000); tPrev = t;
+        if(faceTrackEnabled && faceBridge.ready){
+          const cx = faceBridge.cx, cy = faceBridge.cy;
+          const flipX = mirror ? -1 : 1;
+          const x = (0.5*flipX - cx*flipX) * screen.w;
+          const y = (cy - 0.5) * screen.h;
+          targetEye.x = clamp(x, -screen.w*0.35, screen.w*0.35);
+          targetEye.y = clamp(y, -screen.h*0.35, screen.h*0.35);
+          const ipdN = faceBridge.ipd; if(ipdN>0){ const F=0.45; const est=Math.min(0.8, Math.max(0.25, (0.063/Math.max(0.02,ipdN))*F)); targetEye.z = 0.5*targetEye.z + 0.5*est; }
+        }
+        const sp = Math.hypot(targetEye.x-eye.x, targetEye.y-eye.y, (targetEye.z-eye.z)*0.7);
+        const sDyn = Math.min(0.6, Math.max(0.02, smooth - sp*0.25));
+        const k = 1.0 - Math.pow(1.0 - sDyn, dt*60);
+        eye.x += (targetEye.x - eye.x)*k;
+        eye.y += (targetEye.y - eye.y)*k;
+        eye.z += (targetEye.z - eye.z)*k;
+
+        updateCameraProjection();
+
+        const fps = 1/dt; fpsAvg = fpsAvg + (fps - fpsAvg)*0.05;
+        if(fpsAvg < 30 && targetDPR > 0.75){ targetDPR = Math.max(0.7, targetDPR - 0.05); renderer.setPixelRatio(targetDPR); }
+        else if(fpsAvg > 58){ const cap = (state.quality==='perf'?1:state.quality==='bal'?1.5:2); if(targetDPR < Math.min(cap, devicePixelRatio)){ targetDPR = Math.min(Math.min(cap, devicePixelRatio), targetDPR + 0.03); renderer.setPixelRatio(targetDPR);} }
+
+        renderer.setSize(innerWidth, innerHeight, false);
+        camera.aspect = innerWidth/innerHeight;
+        if(btnBloom.dataset.on==='true' && composer){ composer.setSize(innerWidth, innerHeight); bloomPass.strength = parseFloat(need('bloomStrength').value); composer.render(); }
+        else { renderer.render(scene, camera); }
+
+        need('stats').textContent = `eye: ${(eye.x*100).toFixed(1)}cm, ${(eye.y*100).toFixed(1)}cm, ${(eye.z*100).toFixed(0)}cm  | screen: ${screenW_cm.toFixed(1)}cm × ${(screen.h*100).toFixed(1)}cm  | dpr:${targetDPR.toFixed(2)} fps:${fpsAvg.toFixed(0)}`;
+
+        requestAnimationFrame(frame);
+      }
       requestAnimationFrame(frame);
+
+      addEventListener('resize', ()=>{ updateScreenMeters(); makeBox(); if(composer) composer.setSize(innerWidth, innerHeight); });
+
+      let toastT=null; function toast(txt, warn=false){ const el = need('toast'); el.innerHTML = `<span class="msg" style="border-color:${warn?'rgba(255,107,107,.3)':'rgba(109,211,255,.3)'}">${txt}</span>`; clearTimeout(toastT); toastT = setTimeout(()=> el.innerHTML='', 2400); }
+
+      window._three = { THREE, renderer, scene, camera, group };
     }
-    requestAnimationFrame(frame);
-
-    // Resize
-    addEventListener('resize', ()=>{ updateScreenMeters(); makeBox(); });
-
-    // Toast helper
-    let toastT=null; function toast(txt, warn=false){
-      const el = document.getElementById('toast');
-      el.innerHTML = `<span class="msg" style="border-color:${warn?'rgba(255,107,107,.3)':'rgba(109,211,255,.3)'}">${txt}</span>`;
-      clearTimeout(toastT); toastT = setTimeout(()=> el.innerHTML='', 2400);
-    }
-
-    // Expone por si querés jugar en consola
-    window._three = { THREE, renderer, scene, camera, group };
   </script>
 
-  <!-- MediaPipe FaceMesh (no módulo). Muy estable y liviano para landmarks faciales + iris. -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
   <script>
-    // Este script usa las globals de MediaPipe y actualiza window.__setFace(cx, cy, ipd)
     (function(){
       const video = document.getElementById('webcam');
       const debug = document.getElementById('debug');
       const ctx = debug.getContext('2d');
-
       const faceMesh = new FaceMesh({locateFile: (file)=> `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
-      faceMesh.setOptions({
-        maxNumFaces: 1,
-        refineLandmarks: true, // iris landmarks
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
-      });
-
+      faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
       faceMesh.onResults(onResults);
-
       let cam = null;
-      async function start(){
-        try{
-          cam = new Camera(video, {
-            onFrame: async () => {
-              await faceMesh.send({image: video});
-            }, width: 640, height: 480
-          });
-          cam.start();
-        }catch(e){ console.warn(e); }
-      }
+      async function start(){ try{ cam = new Camera(video, { onFrame: async () => { await faceMesh.send({image: video}); }, width: 640, height: 480 }); cam.start(); } catch(e){ console.warn(e); } }
       start();
-
       function onResults(res){
         if(!res.multiFaceLandmarks || !res.multiFaceLandmarks.length){ return; }
         const landmarks = res.multiFaceLandmarks[0];
-        // Indices de iris (según MediaPipe FaceMesh con refineLandmarks)
-        const L = [468,469,470,471];
-        const R = [473,474,475,476];
-        const lc = centroid(L.map(i=>landmarks[i]));
-        const rc = centroid(R.map(i=>landmarks[i]));
-        const cx = (lc.x + rc.x)/2; // [0..1]
-        const cy = (lc.y + rc.y)/2; // [0..1]
-        const ipd = Math.hypot(lc.x-rc.x, lc.y-rc.y); // en ancho-normalizado del frame
+        const L = [468,469,470,471], R = [473,474,475,476];
+        const lc = centroid(L.map(i=>landmarks[i])); const rc = centroid(R.map(i=>landmarks[i]));
+        const cx = (lc.x + rc.x)/2, cy = (lc.y + rc.y)/2; const ipd = Math.hypot(lc.x-rc.x, lc.y-rc.y);
         if(window.__setFace) window.__setFace(cx, cy, ipd);
-
-        // Debug draw
-        if(debug.style.display !== 'none'){
-          debug.width = res.image.width; debug.height = res.image.height;
-          ctx.save();
-          // espejo horizontal para coincidir con preview
-          ctx.translate(debug.width,0); ctx.scale(-1,1);
-          ctx.drawImage(res.image, 0, 0, debug.width, debug.height);
-          drawIris(lc, rc);
-          ctx.restore();
-        }
+        if(debug.style.display !== 'none'){ debug.width = res.image.width; debug.height = res.image.height; ctx.save(); ctx.translate(debug.width,0); ctx.scale(-1,1); ctx.drawImage(res.image, 0, 0, debug.width, debug.height); drawIris(lc, rc); ctx.restore(); }
       }
-
-      function drawIris(lc, rc){
-        ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(0,255,255,.9)'; ctx.fillStyle = 'rgba(0,255,255,.25)';
-        [lc, rc].forEach(p=>{ ctx.beginPath(); ctx.arc(p.x*debug.width, p.y*debug.height, 8, 0, Math.PI*2); ctx.fill(); ctx.stroke(); });
-        // línea IPD
-        ctx.beginPath(); ctx.moveTo(lc.x*debug.width, lc.y*debug.height); ctx.lineTo(rc.x*debug.width, rc.y*debug.height); ctx.stroke();
-      }
-
-      function centroid(arr){
-        const n = arr.length; let x=0,y=0; for(const p of arr){ x+=p.x; y+=p.y; } return {x:x/n, y:y/n};
-      }
+      function drawIris(lc, rc){ ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(0,255,255,.9)'; ctx.fillStyle = 'rgba(0,255,255,.25)'; [lc, rc].forEach(p=>{ ctx.beginPath(); ctx.arc(p.x*debug.width, p.y*debug.height, 8, 0, Math.PI*2); ctx.fill(); ctx.stroke(); }); ctx.beginPath(); ctx.moveTo(lc.x*debug.width, lc.y*debug.height); ctx.lineTo(rc.x*debug.width, rc.y*debug.height); ctx.stroke(); }
+      function centroid(arr){ const n = arr.length; let x=0,y=0; for(const p of arr){ x+=p.x; y+=p.y; } return {x:x/n, y:y/n}; }
     })();
   </script>
 </body>
