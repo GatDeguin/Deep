@@ -1,0 +1,1393 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Caja 3D (15 cm) — Parallax + Eye Tracking + Física + FX (v4.3.1)</title>
+  <style>
+    :root{
+      --bg:#06070c; --fg:#eaeef7; --muted:#90a3b6; --accent:#6dd3ff;
+      --panel: rgba(10,12,20,.55); --panel-b: rgba(255,255,255,.12);
+      --glow: 0 0 0 6px rgba(109,211,255,.12) inset;
+    }
+    html, body { height:100%; }
+    body { margin:0; background: radial-gradient(1200px 900px at 20% -10%, #101323, transparent 60%), linear-gradient(180deg, #03040a, #06070c 40%, #03040a); color:var(--fg); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
+    #app { position:fixed; inset:0; overflow:hidden; }
+    #three { width:100%; height:100%; display:block; touch-action:none; }
+    .bezel { position:fixed; inset:0; pointer-events:none; box-shadow: inset 0 0 0 12px rgba(0,0,0,.85), inset 0 0 32px rgba(0,0,0,.85), inset 0 0 120px rgba(0,0,0,.85); border-radius: 24px; }
+
+    /* ======= UI ======= */
+    .ui { position:fixed; left:0; right:0; bottom:0; padding:10px env(safe-area-inset-right) calc(10px + env(safe-area-inset-bottom)) env(safe-area-inset-left);
+      display:flex; gap:8px; flex-wrap:wrap; align-items:center; justify-content:center; pointer-events:auto; transition: transform .35s ease, opacity .35s ease; z-index: 5; }
+    .ui.min { transform: translateY(85%); opacity:.15; }
+    .panel { backdrop-filter: blur(14px) saturate(1.2); background: var(--panel); border:1px solid var(--panel-b);
+      border-radius:16px; padding:10px 12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .btn, .seg, .slider { color:var(--fg); font-weight:600; letter-spacing:.2px; }
+    .btn { border:1px solid var(--panel-b); background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02)); border-radius:12px; padding:10px 12px; cursor:pointer; user-select:none; transition: transform .08s ease, box-shadow .2s ease; }
+    .btn:active { transform: translateY(1px) scale(.99); }
+    .btn[data-on="true"] { outline:1.6px solid var(--accent); box-shadow: var(--glow); }
+    .seg { display:flex; border:1px solid var(--panel-b); border-radius:12px; overflow:hidden; }
+    .seg button { all:unset; padding:10px 12px; cursor:pointer; background:rgba(255,255,255,.04); }
+    .seg button[data-active="true"] { background:rgba(109,211,255,.18); color:white; }
+    .field { display:flex; align-items:center; gap:8px; }
+    .field label { font-size:12px; color:var(--muted); }
+    .field input[type="range"] { width:120px; }
+
+    #toast { position:fixed; top:10px; left:0; right:0; margin:auto; width:max(260px, 90vw); text-align:center; pointer-events:none; z-index: 6; }
+    #toast .msg { display:inline-block; padding:10px 14px; border-radius:12px; background:rgba(15,18,30,.85); border:1px solid rgba(255,255,255,.12); }
+
+    #stats { position:fixed; top:0; right:0; padding:8px 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size:12px; opacity:.85; z-index: 6; }
+
+    #webcam { position:fixed; right:8px; top:8px; width:200px; height:auto; transform:scaleX(-1); border-radius:10px; border:1px solid rgba(255,255,255,.12); display:none; z-index: 3; }
+    #debug { position:fixed; right:8px; top:8px; width:200px; height:auto; display:none; pointer-events:none; z-index: 3; }
+
+    /* Mini dock */
+    #miniDock { position:fixed; right:10px; bottom:10px; display:flex; gap:8px; align-items:center; z-index: 6; }
+    #miniDock .bubble { border:1px solid var(--panel-b); background:var(--panel); border-radius:999px; padding:10px; cursor:pointer; backdrop-filter: blur(14px) saturate(1.2); }
+
+    /* Onboarding / Indicaciones */
+    #onboarding { position:fixed; inset:0; display:grid; place-items:center; background: radial-gradient(1200px 900px at center, rgba(8,11,18,.7), rgba(8,11,18,.3) 40%, rgba(0,0,0,.1)); pointer-events:auto; z-index: 10; }
+    #onboarding .card { max-width: min(560px, 90vw); border-radius:16px; border:1px solid var(--panel-b); background:var(--panel); padding:20px; }
+    #onboarding h2 { margin:0 0 6px 0; font-size:20px; }
+    #onboarding p { margin:0 0 14px 0; color:var(--muted); line-height:1.35; }
+    #onboarding .row { display:flex; gap:10px; align-items:center; }
+    #onboarding .meter { width:100%; height:8px; border-radius:999px; background:rgba(255,255,255,.08); overflow:hidden; }
+    #onboarding .meter .bar { height:8px; width:0%; background:linear-gradient(90deg, var(--accent), #9bf3ff); transition: width .2s ease; }
+    #onboarding .actions { display:flex; gap:10px; justify-content:flex-end; margin-top:12px; }
+
+    /* Accessibilidad & pequeño */
+    @media (prefers-reduced-motion: reduce) {
+      .btn { transition: none; }
+      .ui { transition: none; }
+    }
+    @media (max-width: 420px) {
+      .panel { gap: 6px; padding: 8px 8px; }
+      .btn { padding: 8px 9px; }
+      .seg button { padding: 8px 9px; }
+      .field input[type='range'] { width: 90px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <canvas id="three"></canvas>
+    <div class="bezel" aria-hidden="true"></div>
+  </div>
+
+  <!-- ======= UI ======= -->
+  <div class="ui" id="ui">
+    <div class="panel">
+      <div class="seg" id="inputMode">
+        <button data-mode="camera">Cámara</button>
+        <button data-mode="gyro">Giroscopio</button>
+        <button data-mode="mouse">Mouse</button>
+      </div>
+      <div class="seg" id="quality">
+        <button data-q="perf">Perf</button>
+        <button data-q="bal">Bal</button>
+        <button data-q="ultra">Ultra</button>
+      </div>
+      <div class="seg" id="object">
+        <button data-k="pyr">Pyr</button>
+        <button data-k="cube">Cube</button>
+        <button data-k="ico">Ico</button>
+        <button data-k="ball">Bola</button>
+        <button data-k="torus">Torus</button>
+      </div>
+
+      <div class="seg" id="theme">
+        <button data-t="neon">Neón</button>
+        <button data-t="sunset">Sunset</button>
+        <button data-t="matrix">Matrix</button>
+      </div>
+
+      <button class="btn" id="toggleDebug">Debug</button>
+      <button class="btn" id="calibrate">Calibrar</button>
+      <button class="btn" id="toggleShadows">Sombras</button>
+      <button class="btn" id="toggleBloom">Bloom</button>
+      <button class="btn" id="toggleParticles">Partículas</button>
+      <button class="btn" id="togglePhysics">Física</button>
+      <button class="btn" id="toggleGrid">Grid</button>
+      <button class="btn" id="mirrorX">Mirror X</button>
+      <button class="btn" id="invertY">Invert Y</button>
+
+      <!-- FX pack (A) -->
+      <div class="seg" id="fxPack">
+        <button data-fx="ssao">SSAO</button>
+        <button data-fx="dof">DoF</button>
+        <button data-fx="motion">Motion</button>
+        <button data-fx="cavig">CA+Vig</button>
+        <button data-fx="grain">Grain</button>
+        <button data-fx="rays">Rays</button>
+        <button data-fx="refract">Refract</button>
+        <button data-fx="contact">Contact</button>
+        <button data-fx="flicker">Flicker</button>
+        <button data-fx="trail">Trail</button>
+        <button data-fx="floorPlus">Floor+</button>
+        <button data-fx="decals">Decals</button>
+      </div>
+
+      <!-- Interacción extra -->
+      <button class="btn" id="maze">Laberinto</button>
+
+      <button class="btn" id="reset">Reset</button>
+      <button class="btn" id="shot">📷</button>
+      <button class="btn" id="fullscreen">⛶</button>
+
+      <!-- Sliders -->
+      <div class="field slider">
+        <label for="screenW">Ancho pantalla (cm)</label>
+        <input id="screenW" type="range" min="5" max="9" step="0.1" value="7" />
+        <span id="screenWVal">7.0</span>
+      </div>
+      <div class="field slider">
+        <label for="dist">Distancia (cm)</label>
+        <input id="dist" type="range" min="20" max="80" step="1" value="40" />
+        <span id="distVal">40</span>
+      </div>
+      <div class="field slider">
+        <label for="depth">Profundidad caja (cm)</label>
+        <input id="depth" type="range" min="5" max="20" step="0.5" value="15" />
+        <span id="depthVal">15</span>
+      </div>
+      <div class="field slider">
+        <label for="smoothing">Suavizado</label>
+        <input id="smoothing" type="range" min="0" max="0.6" step="0.02" value="0.18" />
+        <span id="smoothingVal">0.18</span>
+      </div>
+      <div class="field slider">
+        <label for="exposure">Exposición</label>
+        <input id="exposure" type="range" min="0.5" max="2.0" step="0.01" value="1.0" />
+        <span id="exposureVal">1.00</span>
+      </div>
+      <div class="field slider">
+        <label for="bloomStrength">Bloom</label>
+        <input id="bloomStrength" type="range" min="0.0" max="2.0" step="0.01" value="0.7" />
+        <span id="bloomStrengthVal">0.70</span>
+      </div>
+
+      <!-- Física -->
+      <div class="field slider">
+        <label for="friction">Fricción (μ<sub>k</sub>)</label>
+        <input id="friction" type="range" min="0.02" max="0.35" step="0.005" value="0.12" />
+        <span id="frictionVal">0.12</span>
+      </div>
+      <div class="field slider">
+        <label for="bounce">Elasticidad</label>
+        <input id="bounce" type="range" min="0.2" max="0.9" step="0.01" value="0.55" />
+        <span id="bounceVal">0.55</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mini dock: minimizar UI y acceso rápido -->
+  <div id="miniDock">
+    <div class="bubble" id="toggleUI" title="Mostrar/Ocultar UI">🡱</div>
+  </div>
+
+  <!-- Onboarding / indicaciones iniciales -->
+  <div id="onboarding" hidden>
+    <div class="card">
+      <h2>Preparación rápida</h2>
+      <p>Deja el teléfono apoyado en una superficie <b>horizontal</b> y estable. Luego toca <b>Listo</b>. Si usas mouse o webcam, puedes continuar igualmente.</p>
+      <div class="row">
+        <div class="meter" aria-label="nivel de inclinación">
+          <div class="bar" id="tiltBar" style="width:0%"></div>
+        </div>
+        <span id="tiltPct" style="width:56px; text-align:right; color:var(--muted)">0%</span>
+      </div>
+      <div class="actions">
+        <button class="btn" id="skipOnboarding">Saltar</button>
+        <button class="btn" id="confirmOnboarding">Listo</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+  <div id="stats"></div>
+  <video id="webcam" autoplay playsinline muted></video>
+  <canvas id="debug"></canvas>
+
+  <!-- Polyfill de import maps -->
+  <script async crossorigin="anonymous" src="https://ga.jspm.io/npm:es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+    import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+    import { SAOPass } from 'three/addons/postprocessing/SAOPass.js';
+    import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
+    import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
+    import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+    import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+    import { FilmPass } from 'three/addons/postprocessing/FilmPass.js';
+
+    const need = (id) => { const el = document.getElementById(id); if (!el) throw new Error('Falta #' + id); return el; };
+    const clamp = (v,lo,hi)=>Math.min(hi, Math.max(lo,v));
+    const lerp = (a,b,t)=>a+(b-a)*t;
+    const sign = (v)=> (v<0?-1:(v>0?1:0));
+    const deg2rad = (d)=> d*Math.PI/180;
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', main);
+    else main();
+
+    function ensureContainer(){
+      let app = need('app');
+      if(!app){ app = document.createElement('div'); app.id='app'; app.style.position='fixed'; app.style.inset='0'; app.style.overflow='hidden'; document.body.appendChild(app); }
+      let canvas = need('three');
+      if(!canvas){ canvas = document.createElement('canvas'); canvas.id='three'; app.prepend(canvas); }
+      let bezel = document.querySelector('.bezel');
+      if(!bezel){ bezel = document.createElement('div'); bezel.className='bezel'; app.appendChild(bezel); }
+      return { app, canvas };
+    }
+
+    // --- Lazy import GodRays desde jsDelivr (CORS-friendly)
+    let GodRaysPass = null;
+    async function ensureGodRays(){
+      if (GodRaysPass) return GodRaysPass;
+      try {
+        const m = await import('https://cdn.jsdelivr.net/npm/three-stdlib@2.30.4/postprocessing/GodRaysPass.js');
+        GodRaysPass = m.GodRaysPass || null;
+      } catch (e) {
+        console.warn('GodRaysPass no disponible; usaré fake rays', e);
+        GodRaysPass = null;
+      }
+      return GodRaysPass;
+    }
+
+    function main(){
+      const { canvas } = ensureContainer();
+
+      // ===== Estado + persistencia =====
+      const save = ()=>localStorage.setItem('holoBox:v43', JSON.stringify(stateToPersist()));
+      const load = ()=>{ try{ return JSON.parse(localStorage.getItem('holoBox:v43')||'{}'); }catch{ return {} } };
+      const defaults = {
+        mode:'camera', quality:'bal', object:'pyr', theme:'neon',
+        shadowsOn:false, gridOn:false, mirror:false, bloomOn:false,
+        particlesOn:true, physicsOn:true, invertY:true, raysOn:false,
+        ssao:false, dof:false, motion:false, cavig:false, grain:false, refract:false, contact:true, flicker:true, trail:true, floorPlus:true, decals:true,
+        maze:false,
+        screenW:7.0, dist:40, depth:15, smoothing:0.18, exposure:1.0, bloomStrength:0.7,
+        friction:0.12, bounce:0.55,
+        uiMin:false, seenOnboarding:false, telemetry:false
+      };
+      const state = Object.assign({}, defaults, load());
+
+      // ===== Renderer / Escena / Cámara =====
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:false, powerPreference:'high-performance' });
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.physicallyCorrectLights = true;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      let targetDPR = Math.min(devicePixelRatio, 2);
+      renderer.setPixelRatio(targetDPR);
+      renderer.setSize(innerWidth, innerHeight);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x05060a);
+
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      const env = new RoomEnvironment(renderer);
+      const envTex = pmrem.fromScene(env, 0.04).texture;
+      scene.environment = envTex;
+
+      const near = 0.01, far = 2.5;
+      const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, near, far);
+      camera.position.set(0, 0, 0.4);
+
+      // ===== POST: declarar temprano para evitar TDZ =====
+      let composer = null;
+      let renderPass, bloomPass, saoPass, bokehPass, afterPass, filmPass, fxaaPass, caVigPass, outputPass;
+      let postDirty = true;
+
+      function ensureComposer(){
+        if(!composer){
+          composer = new EffectComposer(renderer);
+          renderPass = new RenderPass(scene, camera);
+          bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), parseFloat(need('bloomStrength').value), 0.4, 0.85);
+          outputPass = new OutputPass();
+          composer.addPass(renderPass);
+          composer.addPass(bloomPass);
+          composer.addPass(outputPass);
+          composer.setSize(innerWidth, innerHeight);
+        }
+      }
+      function layoutComposer(){
+        if(!composer){ ensureComposer(); }
+        composer.passes.length = 0;
+        composer.addPass(renderPass);
+
+        if(state.ssao){
+          if(!saoPass){ saoPass = new SAOPass(scene, camera, false, true); saoPass.params.saoBias=0.5; saoPass.params.saoIntensity=0.02; saoPass.params.saoScale=30; saoPass.params.saoKernelRadius=18; }
+          composer.addPass(saoPass);
+        }
+        if(state.motion){
+          if(!afterPass){ afterPass = new AfterimagePass(0.90); }
+          composer.addPass(afterPass);
+        }
+        if(state.dof){
+          if(!bokehPass){ bokehPass = new BokehPass(scene, camera, { focus: 0.35, aperture: 0.00008, maxblur: 0.003 }); }
+          composer.addPass(bokehPass);
+        }
+        if(state.cavig){
+          if(!caVigPass){
+            const caVigShader = {
+              uniforms: { tDiffuse:{value:null}, amount:{value:0.0018}, radial:{value:1.2}, vignette:{value:0.25} },
+              vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+              fragmentShader:`
+                uniform sampler2D tDiffuse; uniform float amount; uniform float radial; uniform float vignette; varying vec2 vUv;
+                void main(){
+                  vec2 c = vUv - 0.5;
+                  float r = length(c);
+                  vec2 off = c * amount * radial;
+                  vec4 col;
+                  col.r = texture2D(tDiffuse, vUv + off).r;
+                  col.g = texture2D(tDiffuse, vUv).g;
+                  col.b = texture2D(tDiffuse, vUv - off).b;
+                  col.a = 1.0;
+                  float vig = smoothstep(0.8, vignette, r);
+                  col.rgb *= mix(1.0, 0.85, vig);
+                  gl_FragColor = col;
+                }`
+            };
+            caVigPass = new ShaderPass(caVigShader);
+          }
+          composer.addPass(caVigPass);
+        }
+        if(state.grain){
+          if(!filmPass){ filmPass = new FilmPass(0.25, 0.025, 648, false); }
+          composer.addPass(filmPass);
+        }
+        if(state.bloomOn){ composer.addPass(bloomPass); }
+
+        const wantFXAA = (targetDPR < 1.0);
+        if(wantFXAA){
+          if(!fxaaPass){ fxaaPass = new ShaderPass(FXAAShader); }
+          const px = 1 / innerWidth, py = 1 / innerHeight;
+          fxaaPass.material.uniforms['resolution'].value.set(px, py);
+          composer.addPass(fxaaPass);
+        }
+        composer.addPass(outputPass);
+        composer.setSize(innerWidth, innerHeight);
+      }
+
+      // ===== Derivados de estado =====
+      let screenW_cm = +state.screenW;
+      const screen = { w: screenW_cm/100, h: (screenW_cm/100) * (innerHeight/innerWidth) };
+      let boxDepth_cm = +state.depth;
+      let currentObject = state.object;
+      let mirror = !!state.mirror;
+      let invertY = !!state.invertY;
+      let physicsOn = !!state.physicsOn;
+      let particlesOn = !!state.particlesOn;
+      let theme = state.theme || 'neon';
+
+      // ---- FPS promedio declarado temprano (para evitar TDZ en ensureParticles)
+      let fpsAvg = 60;
+
+      // ---- Física (constantes realistas)
+      const PHYS = {
+        g: 9.81,
+        thetaMax: deg2rad(14), // ±14°
+        mu_s: 0.18,
+        mu_k: state.friction ?? 0.12,
+        c_roll: 0.008,
+        k_air: 0.25
+      };
+
+      function themedColors(t){
+        if(t==='sunset') return { wall:0x0a0a10, floor:0x1c0f11, hemiSky:0xffd8a8, hemiGnd:0x180b0a, key:0xff9b73, rim:0xffd0a8, fill:0xff6b6b, accent:0xffa94d };
+        if(t==='matrix') return { wall:0x050807, floor:0x0a0f0a, hemiSky:0xa6ffc3, hemiGnd:0x0b0f0b, key:0x7dffb3, rim:0xa6ffc3, fill:0x00ffa3, accent:0x00ff88 };
+        return { wall:0x0b0c10, floor:0x0d1117, hemiSky:0x99bbff, hemiGnd:0x101318, key:0x9cc9ff, rim:0xffffff, fill:0x66eeff, accent:0x6dd3ff };
+      }
+
+      function applyTheme(t){
+        theme = t;
+        const c = themedColors(t);
+        hemi.color.setHex(c.hemiSky);
+        hemi.groundColor.setHex(c.hemiGnd);
+        key.color.setHex(c.key);
+        rim.color.setHex(c.rim);
+        fill.color.setHex(c.fill);
+        if(walls) walls.material.color.setHex(c.wall);
+        if(floor) floor.material.color.setHex(c.floor);
+        neonStrips.forEach(m=>m.material.emissive.setHex(c.accent));
+        document.documentElement.style.setProperty('--accent', '#' + new THREE.Color(c.accent).getHexString());
+      }
+
+      function updateScreenMeters(){
+        screen.w = (screenW_cm/100);
+        screen.h = screen.w * (innerHeight/innerWidth);
+        if(grid) { grid.scale.set(screen.w*0.98, 1, screen.h*0.98); }
+        if(boardGroup) { fitBoard(); }
+      }
+
+      function makePerspectiveOffCenter(cam, left, right, bottom, top, near, far){
+        const x = 2*near/(right-left), y = 2*near/(top-bottom), a = (right+left)/(right-left), b = (top+bottom)/(top-bottom), c = -(far+near)/(far-near), d = -2*far*near/(far-near);
+        cam.projectionMatrix.set(x,0,a,0, 0,y,b,0, 0,0,c,d, 0,0,-1,0);
+      }
+
+      // ===== Iluminación =====
+      const hemi = new THREE.HemisphereLight(0x99bbff, 0x101318, 0.6); scene.add(hemi);
+      const key = new THREE.SpotLight(0x9cc9ff, 1.1, 3.0, Math.PI/6, 0.35, 1.0); key.position.set(0.25,0.22, 0.25); scene.add(key);
+      const rim = new THREE.DirectionalLight(0xffffff, 0.45); rim.position.set(-0.3,-0.4,-0.2); scene.add(rim);
+      const fill = new THREE.PointLight(0x66eeff, 0.35, 1.0); fill.position.set(-0.12, 0.15, -0.25); scene.add(fill);
+
+      // ===== Objetos de escena =====
+      const group = new THREE.Group(); scene.add(group);
+      let obj, floor, walls, grid, boardGroup, boardMesh, edgeMesh, neonStrips=[], contactShadow;
+      let obstaclesGroup=null;
+
+      function buildObject(kind, w, h, d){
+        currentObject = kind;
+        let mesh;
+        const accent = themedColors(theme).accent;
+        if(kind==='cube'){
+          const geo = new THREE.BoxGeometry(Math.min(w,h)*0.28, Math.min(w,h)*0.28, Math.min(w,h)*0.28);
+          const mat = new THREE.MeshPhysicalMaterial({ color:0xffffff, roughness:0.07, transmission:1.0, thickness:0.03, ior:1.5, clearcoat:1, clearcoatRoughness:0.08, attenuationColor:new THREE.Color(accent), attenuationDistance:2.0 });
+          mesh = new THREE.Mesh(geo, mat);
+        } else if(kind==='ico'){
+          const geo = new THREE.IcosahedronGeometry(Math.min(w,h)*0.18, 1);
+          const mat = new THREE.MeshPhysicalMaterial({ color:0xffffff, roughness:0.06, transmission:1.0, thickness:0.025, ior:1.5, clearcoat:1, clearcoatRoughness:0.08, attenuationColor:new THREE.Color(accent), attenuationDistance:2.0 });
+          mesh = new THREE.Mesh(geo, mat);
+        } else if(kind==='torus'){
+          const geo = new THREE.TorusKnotGeometry(Math.min(w,h)*0.12, Math.min(w,h)*0.035, 140, 18);
+          const mat = new THREE.MeshPhysicalMaterial({ color:new THREE.Color(accent), roughness:0.25, metalness:0.85, clearcoat:1, clearcoatRoughness:0.1 });
+          mesh = new THREE.Mesh(geo, mat);
+        } else if(kind==='ball'){
+          const r = Math.min(w,h)*0.05;
+          const geo = new THREE.SphereGeometry(r, 48, 32);
+          const mat = new THREE.MeshPhysicalMaterial({ color:0xffffff, roughness:0.2, metalness:0.0, clearcoat:1, clearcoatRoughness:0.1, transmission:0.2, ior:1.3, attenuationColor:new THREE.Color(accent), attenuationDistance:3.0, envMapIntensity:1.2 });
+          mesh = new THREE.Mesh(geo, mat);
+          mesh.userData.radius = r;
+        } else {
+          const pyrH = Math.min(d*0.66, h*0.6), pyrR = Math.min(w,h)*0.16;
+          const geo = new THREE.ConeGeometry(pyrR, pyrH, 4, 1, false); geo.rotateY(Math.PI/4);
+          const mat = new THREE.MeshPhysicalMaterial({ color:0xffffff, roughness:0.06, transmission:1.0, thickness:0.02, ior:1.5, envMapIntensity:1.2, attenuationColor:new THREE.Color(accent), attenuationDistance:2.0, reflectivity:0.1, clearcoat:1.0, clearcoatRoughness:0.08 });
+          mesh = new THREE.Mesh(geo, mat);
+        }
+        mesh.position.set(0, 0, -(boxDepth_cm/100)*0.50);
+        mesh.castShadow = true;
+        return mesh;
+      }
+
+      function addNeonStrips(w, h, d){
+        neonStrips.forEach(s=>group.remove(s));
+        neonStrips.length = 0;
+        const accent = themedColors(theme).accent;
+        const stripGeo = new THREE.BoxGeometry(0.002, 0.002, Math.min(w,h)*0.35);
+        const mat = new THREE.MeshStandardMaterial({ color:0xffffff, emissive:new THREE.Color(accent), emissiveIntensity:1.2, metalness:0.2, roughness:0.4, transparent:true, opacity:0.95 });
+        const s1 = new THREE.Mesh(stripGeo, mat); s1.position.set(-w*0.36,  h*0.25, -d*0.65); s1.rotateY(Math.PI*0.1);
+        const s2 = new THREE.Mesh(stripGeo, mat); s2.position.set( w*0.38, -h*0.22, -d*0.35); s2.rotateY(-Math.PI*0.1);
+        neonStrips.push(s1, s2); neonStrips.forEach(s=>{ s.castShadow = false; group.add(s); });
+      }
+
+      function ensureContactShadow(){
+        if(contactShadow){ group.remove(contactShadow); contactShadow.geometry.dispose(); contactShadow.material.dispose(); }
+        const tex = document.createElement('canvas'); const S=128; tex.width=S; tex.height=S;
+        const ctx = tex.getContext('2d'); const g=ctx.createRadialGradient(S/2,S/2,1, S/2,S/2,S/2); g.addColorStop(0,'rgba(0,0,0,0.35)'); g.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=g; ctx.fillRect(0,0,S,S);
+        const t = new THREE.CanvasTexture(tex); t.needsUpdate=true;
+        const mat = new THREE.MeshBasicMaterial({ map:t, transparent:true, depthWrite:false });
+        contactShadow = new THREE.Mesh(new THREE.PlaneGeometry(0.2,0.2), mat);
+        contactShadow.rotation.x = -Math.PI/2;
+        contactShadow.position.set(0, 0, -boxDepth_cm/100*0.52);
+        group.add(contactShadow);
+      }
+
+      // Procedural floor texture
+      function makeFloorTexture(){
+        const cnv = document.createElement('canvas'); const W=256,H=256; cnv.width=W; cnv.height=H; const ctx=cnv.getContext('2d');
+        ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,W,H);
+        const id = ctx.getImageData(0,0,W,H); const d = id.data;
+        for(let i=0;i<d.length;i+=4){ const n = 8+Math.random()*8; d[i]+=n; d[i+1]+=n; d[i+2]+=n; }
+        ctx.putImageData(id,0,0);
+        ctx.strokeStyle='rgba(255,255,255,.06)'; ctx.lineWidth=1;
+        for(let x=0;x<=W;x+=W/16){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+        for(let y=0;y<=H;y+=H/16){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+        const tex = new THREE.CanvasTexture(cnv); tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.repeat.set(2,2);
+        return tex;
+      }
+
+      function applyShadows(on){
+        renderer.shadowMap.enabled = on;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        key.castShadow = on; rim.castShadow = on; hemi.castShadow = false; fill.castShadow = on;
+        if(obj) obj.castShadow = on;
+        if(floor) floor.receiveShadow = on;
+        if(boardMesh) boardMesh.receiveShadow = on;
+        if(edgeMesh) edgeMesh.castShadow = on;
+      }
+
+      // ===== Piso/box + tablero de juego =====
+      function makeBox(){
+        group.clear();
+        const depth = boxDepth_cm/100; const w = screen.w, h = screen.h, d = depth;
+
+        const c = themedColors(theme);
+        const wallMat = new THREE.MeshPhysicalMaterial({ color:c.wall, roughness:0.9, metalness:0.0, side:THREE.BackSide, clearcoat:0.2, clearcoatRoughness:0.7 });
+        const boxGeo = new THREE.BoxGeometry(w, h, d);
+        walls = new THREE.Mesh(boxGeo, wallMat); walls.position.set(0,0,-d/2); group.add(walls);
+
+        const floorMat = new THREE.MeshPhysicalMaterial({ color:c.floor, roughness:0.6, metalness:0.2, reflectivity:0.4, map: state.floorPlus ? makeFloorTexture(): null });
+        floor = new THREE.Mesh(new THREE.PlaneGeometry(w*0.98, d*0.98), floorMat);
+        floor.rotation.x=-Math.PI/2; floor.position.set(0,-h/2+0.001,-d/2); group.add(floor);
+
+        grid = new THREE.GridHelper(Math.max(w,h), 24, 0x334455, 0x223344); grid.material.opacity=0.22; grid.material.transparent=true; grid.position.set(0,-h/2+0.0021,-d/2); grid.visible = !!state.gridOn; group.add(grid);
+
+        obj = buildObject(currentObject, w, h, d); group.add(obj);
+        addNeonStrips(w, h, d);
+        makeBoard();
+        if(state.contact) ensureContactShadow();
+
+        key.position.set(w*0.3, h*0.35, 0.25); key.target = obj; rim.position.set(-w*0.5, -h*0.6, -d*0.4);
+
+        applyShadows(!!state.shadowsOn);
+        applyTheme(theme);
+        if(particlesOn) ensureParticles(); else removeParticles();
+
+        if(obstaclesGroup) { group.remove(obstaclesGroup); obstaclesGroup = null; }
+        if(state.maze) makeObstacles();
+
+        postDirty = true;
+      }
+
+      // ===== Tablero y bola =====
+      function makeBoard(){
+        if(boardGroup){ group.remove(boardGroup); boardGroup = null; }
+        boardGroup = new THREE.Group(); group.add(boardGroup);
+        const w = screen.w, h = screen.h, d = boxDepth_cm/100;
+        const bw = w*0.78, bd = Math.min(d*0.7, h*0.65);
+        const boardMat = new THREE.MeshPhysicalMaterial({ color:0x111623, metalness:0.15, roughness:0.38, clearcoat:0.3, clearcoatRoughness:0.3 });
+        boardMesh = new THREE.Mesh(new THREE.PlaneGeometry(bw, bd, 1, 1), boardMat);
+        boardMesh.rotation.x=-Math.PI/2;
+        boardMesh.position.set(0, -h/2+0.005, -d*0.52);
+        boardGroup.add(boardMesh);
+
+        // Edges
+        const edgeH = Math.min(h*0.06, 0.03);
+        const edgeGeo = new THREE.BoxGeometry(bw, edgeH, 0.01);
+        const edgeMat = new THREE.MeshStandardMaterial({ color:0x0b0f18, metalness:0.4, roughness:0.55 });
+        const e1 = new THREE.Mesh(edgeGeo, edgeMat); e1.position.set(0, -h/2+edgeH/2, boardMesh.position.z - bd/2);
+        const e2 = e1.clone(); e2.position.z = boardMesh.position.z + bd/2;
+        const e3 = new THREE.Mesh(new THREE.BoxGeometry(0.01, edgeH, bd), edgeMat); e3.position.set(-bw/2, -h/2+edgeH/2, boardMesh.position.z);
+        const e4 = e3.clone(); e4.position.x = bw/2;
+        edgeMesh = new THREE.Group(); edgeMesh.add(e1,e2,e3,e4); boardGroup.add(edgeMesh);
+
+        if(currentObject==='ball'){
+          const r = Math.min(w,h)*0.05;
+          if(!obj || !obj.userData.radius){ obj = buildObject('ball', w,h,d); boardGroup.add(obj); }
+          obj.position.set(0, (-h/2)+r+0.006, boardMesh.position.z);
+          ballState.pos.set(0, obj.position.y, obj.position.z);
+          ballState.vel.set(0,0,0);
+          ballState.radius = r;
+          boardGroup.add(obj);
+        }
+      }
+
+      function fitBoard(){
+        if(!boardGroup) return;
+        const w = screen.w, h = screen.h, d = boxDepth_cm/100;
+        const bw = w*0.78, bd = Math.min(d*0.7, h*0.65);
+        boardMesh.geometry.dispose(); boardMesh.geometry = new THREE.PlaneGeometry(bw, bd, 1, 1);
+        boardMesh.position.set(0, -h/2+0.005, -d*0.52);
+        const edgeH = Math.min(h*0.06, 0.03);
+        const children = edgeMesh.children;
+        children[0].geometry.dispose(); children[0].geometry = new THREE.BoxGeometry(bw, edgeH, 0.01);
+        children[0].position.set(0, -h/2+edgeH/2, boardMesh.position.z - bd/2);
+        children[1].geometry.dispose(); children[1].geometry = new THREE.BoxGeometry(bw, edgeH, 0.01);
+        children[1].position.set(0, -h/2+edgeH/2, boardMesh.position.z + bd/2);
+        children[2].geometry.dispose(); children[2].geometry = new THREE.BoxGeometry(0.01, edgeH, bd);
+        children[2].position.set(-bw/2, -h/2+edgeH/2, boardMesh.position.z);
+        children[3].geometry.dispose(); children[3].geometry = new THREE.BoxGeometry(0.01, edgeH, bd);
+        children[3].position.set(bw/2, -h/2+edgeH/2, boardMesh.position.z);
+        if(currentObject==='ball' && obj){
+          const r = Math.min(w,h)*0.05;
+          obj.userData.radius = r;
+          obj.position.set(obj.position.x, (-h/2)+r+0.006, obj.position.z);
+          ballState.pos.y = obj.position.y;
+          ballState.radius = r;
+        }
+      }
+
+      // ===== Obstáculos (modo Laberinto) =====
+      function makeObstacles(){
+        if(obstaclesGroup){ group.remove(obstaclesGroup); }
+        obstaclesGroup = new THREE.Group();
+        const w = screen.w, h = screen.h, d = boxDepth_cm/100;
+        const bw = w*0.78, bd = Math.min(d*0.7, h*0.65);
+        const mat = new THREE.MeshStandardMaterial({ color:0x142033, metalness:0.3, roughness:0.6 });
+        function bar(x,z, sx, sz){
+          const m = new THREE.Mesh(new THREE.BoxGeometry(sx, 0.01, sz), mat);
+          m.position.set(x, -h/2+0.01, z);
+          m.userData.bounds = new THREE.Box3().setFromObject(m);
+          obstaclesGroup.add(m);
+        }
+        bar(0, boardMesh.position.z - bd*0.2, bw*0.5, 0.02);
+        bar(0, boardMesh.position.z + bd*0.2, bw*0.5, 0.02);
+        bar(-bw*0.2, boardMesh.position.z, 0.02, bd*0.4);
+        bar( bw*0.2, boardMesh.position.z, 0.02, bd*0.4);
+        bar(-bw*0.35, boardMesh.position.z + bd*0.05, 0.06, 0.02);
+        bar( bw*0.35, boardMesh.position.z - bd*0.05, 0.06, 0.02);
+        group.add(obstaclesGroup);
+      }
+
+      function collideObstacles(){
+        if(!obstaclesGroup || !obj) return;
+        const r = ballState.radius;
+        const pos = obj.position;
+        const tmp = new THREE.Box3();
+        obstaclesGroup.children.forEach(m=>{
+          m.updateMatrixWorld();
+          m.userData.bounds = tmp.setFromObject(m);
+          const b = m.userData.bounds.clone().expandByVector(new THREE.Vector3(r,r,r));
+          if(b.containsPoint(pos)){
+            const dx = Math.min(Math.abs(pos.x-b.min.x), Math.abs(b.max.x-pos.x));
+            const dz = Math.min(Math.abs(pos.z-b.min.z), Math.abs(b.max.z-pos.z));
+            if(dx < dz){ ballState.vel.x *= -state.bounce; pos.x += Math.sign(pos.x - (b.min.x+b.max.x)/2) * (dx+0.001); }
+            else { ballState.vel.z *= -state.bounce; pos.z += Math.sign(pos.z - (b.min.z+b.max.z)/2) * (dz+0.001); }
+            impactGlitch(0.18);
+            vibrate(20);
+          }
+        });
+      }
+
+      // ===== Partículas =====
+      let particles;
+      function ensureParticles(){
+        removeParticles();
+        const count = (fpsAvg < 40) ? 120 : 220;
+        const g = new THREE.BufferGeometry();
+        const positions = new Float32Array(count*3);
+        const speeds = new Float32Array(count);
+        for(let i=0;i<count;i++){
+          positions[i*3+0] = (Math.random()-0.5) * screen.w*0.9;
+          positions[i*3+1] = (Math.random()-0.5) * screen.h*0.9;
+          positions[i*3+2] = - (Math.random()) * (boxDepth_cm/100) * 0.95;
+          speeds[i] = 0.3 + Math.random()*0.7;
+        }
+        g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        g.setAttribute('speed', new THREE.BufferAttribute(speeds, 1));
+        const m = new THREE.PointsMaterial({ size:0.002, color:0xffffff, transparent:true, opacity:0.75, depthWrite:false });
+        particles = new THREE.Points(g, m);
+        group.add(particles);
+      }
+      function removeParticles(){ if(particles){ group.remove(particles); particles.geometry.dispose(); particles.material.dispose(); particles=null; } }
+
+      // ===== Trail =====
+      let trail, trailPositions, trailMax=80, trailIdx=0, trailCount=0;
+      function ensureTrail(){
+        if(trail) { group.remove(trail); trail.geometry.dispose(); trail.material.dispose(); trail=null; }
+        trailPositions = new Float32Array(trailMax*3);
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+        const m = new THREE.LineBasicMaterial({ color:0x74c0fc, transparent:true, opacity:0.6 });
+        trail = new THREE.Line(g, m);
+        group.add(trail);
+      }
+      function stepTrail(){
+        if(!trail || !obj) return;
+        const p = obj.position;
+        trailPositions[trailIdx*3+0]=p.x;
+        trailPositions[trailIdx*3+1]=p.y+0.001;
+        trailPositions[trailIdx*3+2]=p.z;
+        trailIdx=(trailIdx+1)%trailMax;
+        trailCount=Math.min(trailCount+1, trailMax);
+        const arr = new Float32Array(trailPositions.length);
+        const head = trailPositions.slice(trailIdx*3);
+        const tail = trailPositions.slice(0, trailIdx*3);
+        arr.set(head,0); arr.set(tail,head.length);
+        trail.geometry.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+        trail.geometry.setDrawRange(0, trailCount);
+        trail.geometry.attributes.position.needsUpdate = true;
+      }
+
+      // ===== UI & Estado aplicado =====
+      const UI = {
+        root: need('ui'),
+        debug: need('toggleDebug'),
+        calibrate: need('calibrate'),
+        shadows: need('toggleShadows'),
+        bloom: need('toggleBloom'),
+        grid: need('toggleGrid'),
+        mirror: need('mirrorX'),
+        invertY: need('invertY'),
+        reset: need('reset'),
+        shot: need('shot'),
+        fs: need('fullscreen'),
+        uiToggle: need('toggleUI'),
+        particles: need('toggleParticles'),
+        physics: need('togglePhysics'),
+        maze: need('maze')
+      };
+      if(state.uiMin) UI.root.classList.add('min');
+
+      const fxRoot = need('fxPack');
+      const fxBtns = {}; fxRoot.querySelectorAll('button').forEach(b=>{ fxBtns[b.dataset.fx]=b; });
+
+      const rExposure = need('exposure'), vExposure = need('exposureVal');
+      const rBloom = need('bloomStrength'), vBloom = need('bloomStrengthVal');
+      const rScreen = need('screenW'), rDist = need('dist'), rDepth = need('depth'), rSmooth = need('smoothing');
+      const vScreen = need('screenWVal'), vDist = need('distVal'), vDepth = need('depthVal'), vSmooth = need('smoothingVal');
+      const rFriction = need('friction'), vFriction = need('frictionVal');
+      const rBounce = need('bounce'), vBounce = need('bounceVal');
+
+      rScreen.value = state.screenW; vScreen.textContent = (+rScreen.value).toFixed(1);
+      rDist.value = state.dist; vDist.textContent = rDist.value;
+      rDepth.value = state.depth; vDepth.textContent = rDepth.value;
+      rSmooth.value = state.smoothing; vSmooth.textContent = rSmooth.value;
+      rExposure.value = state.exposure; vExposure.textContent = (+rExposure.value).toFixed(2); renderer.toneMappingExposure = +rExposure.value;
+      rBloom.value = state.bloomStrength; vBloom.textContent = (+rBloom.value).toFixed(2);
+      UI.shadows.dataset.on = state.shadowsOn; UI.grid.dataset.on = state.gridOn; UI.bloom.dataset.on = state.bloomOn; UI.mirror.dataset.on = mirror; UI.invertY.dataset.on = invertY;
+      UI.particles.dataset.on = particlesOn; UI.physics.dataset.on = physicsOn; UI.maze.dataset.on = state.maze;
+      vFriction.textContent = (+rFriction.value).toFixed(2); vBounce.textContent=(+rBounce.value).toFixed(2);
+
+      Object.entries({ssao:'ssao', dof:'dof', motion:'motion', cavig:'cavig', grain:'grain', rays:'raysOn', refract:'refract', contact:'contact', flicker:'flicker', trail:'trail', floorPlus:'floorPlus', decals:'decals'})
+        .forEach(([k,sk])=>{ if(fxBtns[k]) fxBtns[k].dataset.on = state[sk]; });
+
+      let toastT = null;
+      function toast(txt, warn=false){
+        const el = need('toast');
+        el.innerHTML = `<span class="msg" style="border-color:${warn?'rgba(255,107,107,.3)':'rgba(109,211,255,.3)'}">${txt}</span>`;
+        clearTimeout(toastT); toastT = setTimeout(()=> el.innerHTML='', 2400);
+      }
+
+      updateScreenMeters();
+      makeBox();
+
+      function stateToPersist(){
+        return {
+          mode: state.mode,
+          quality: state.quality,
+          object: currentObject,
+          theme,
+          shadowsOn: (UI.shadows.dataset.on === 'true'),
+          gridOn: (UI.grid.dataset.on === 'true'),
+          mirror: mirror,
+          invertY: (UI.invertY.dataset.on === 'true'),
+          bloomOn: (UI.bloom.dataset.on === 'true'),
+          particlesOn: (UI.particles.dataset.on === 'true'),
+          physicsOn: (UI.physics.dataset.on === 'true'),
+          // FX
+          ssao: (fxBtns['ssao']?.dataset.on === 'true'),
+          dof: (fxBtns['dof']?.dataset.on === 'true'),
+          motion: (fxBtns['motion']?.dataset.on === 'true'),
+          cavig: (fxBtns['cavig']?.dataset.on === 'true'),
+          grain: (fxBtns['grain']?.dataset.on === 'true'),
+          raysOn: (fxBtns['rays']?.dataset.on === 'true'),
+          refract: (fxBtns['refract']?.dataset.on === 'true'),
+          contact: (fxBtns['contact']?.dataset.on === 'true'),
+          flicker: (fxBtns['flicker']?.dataset.on === 'true'),
+          trail: (fxBtns['trail']?.dataset.on === 'true'),
+          floorPlus: (fxBtns['floorPlus']?.dataset.on === 'true'),
+          decals: (fxBtns['decals']?.dataset.on === 'true'),
+          maze: (UI.maze.dataset.on === 'true'),
+          // sliders
+          screenW: +rScreen.value,
+          dist: +rDist.value,
+          depth: +rDepth.value,
+          smoothing: +rSmooth.value,
+          exposure: +rExposure.value,
+          bloomStrength: +rBloom.value,
+          friction: +rFriction.value,
+          bounce: +rBounce.value,
+          uiMin: UI.root.classList.contains('min'),
+          seenOnboarding: state.seenOnboarding,
+          telemetry: state.telemetry
+        };
+      }
+
+      // ===== Entradas =====
+      const eye = { x:0, y:0, z: (+state.dist)/100 }, targetEye = { x:0, y:0, z: (+state.dist)/100 };
+      let smooth = +state.smoothing;
+
+      const tilt = { x:0, y:0 };
+      function updateTiltFromEye(){
+        const rx = screen.w*0.35, ry = screen.h*0.35;
+        tilt.x = clamp(targetEye.x / rx, -1, 1);
+        const ty = (invertY ? -targetEye.y : targetEye.y);
+        tilt.y = clamp(ty / ry, -1, 1);
+      }
+
+      let lastGamma=0, lastBeta=0, gyroOffset={x:0,y:0}, autoCalib=false, autoCalibSamples=0;
+      function enableGyro(){
+        function handler(ev){
+          const g = (ev.gamma||0), b=(ev.beta||0);
+          lastGamma = g; lastBeta = b;
+          const gx = (g/30), by = (b/45);
+          if(!autoCalib){ autoCalib=true; gyroOffset={x:0,y:0}; autoCalibSamples=0; setTimeout(()=>{
+            if(autoCalibSamples>0){ gyroOffset.x/=autoCalibSamples; gyroOffset.y/=autoCalibSamples; toast('Auto‑calibrado'); }
+          }, 1000); }
+          if(autoCalib && autoCalibSamples<60){ gyroOffset.x+=gx; gyroOffset.y+=by; autoCalibSamples++; }
+
+          const adjX = gx - gyroOffset.x;
+          const adjY = by - gyroOffset.y;
+          targetEye.x = clamp(adjX * (screen.w*0.15), -screen.w*0.2, screen.w*0.2);
+          const mappedY = (invertY ? -adjY : adjY) * (screen.h*0.15);
+          targetEye.y = clamp(mappedY, -screen.h*0.2, screen.h*0.2);
+          tilt.x = clamp(adjX, -1, 1);
+          tilt.y = clamp((invertY ? -adjY : adjY), -1, 1);
+        }
+        if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function'){
+          DeviceMotionEvent.requestPermission().then(st=>{
+            if(st==='granted'){ addEventListener('deviceorientation', handler); toast('Giroscopio activo'); }
+            else toast('Permiso de giroscopio denegado', true);
+          }).catch(()=>toast('Giroscopio no disponible', true));
+        } else {
+          addEventListener('deviceorientation', handler); toast('Giroscopio activo');
+        }
+      }
+
+      function enableMouse(){
+        function onMove(e){
+          const nx=(e.clientX/innerWidth)*2-1, ny=(e.clientY/innerHeight)*2-1;
+          targetEye.x=clamp(nx*screen.w*0.25, -screen.w*0.3, screen.w*0.3);
+          const my = (invertY ? -ny : ny);
+          targetEye.y=clamp(my*screen.h*0.25, -screen.h*0.3, screen.h*0.3);
+          updateTiltFromEye();
+        }
+        addEventListener('mousemove', onMove); toast('Parallax por mouse activo');
+      }
+
+      let faceTrackEnabled=false; const faceBridge = { ready:false, cx:0.5, cy:0.5, ipd:0.06 };
+      window.__setFace = (cx, cy, ipd)=>{ faceBridge.ready = true; faceBridge.cx = cx; faceBridge.cy = cy; faceBridge.ipd = ipd; };
+
+      async function enableCamera(){
+        const v = need('webcam');
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:'user', width:{ideal:640}, height:{ideal:480} }, audio:false });
+          v.srcObject = stream; await v.play(); faceTrackEnabled = true; toast('Cámara activa (tracking de ojos)');
+        } catch(e){ toast('No se pudo acceder a la cámara', true); }
+      }
+
+      function setMode(mode){
+        state.mode = mode; save();
+        const [camBtn, gyroBtn, mouseBtn] = need('inputMode').querySelectorAll('button');
+        camBtn.dataset.active = (mode==='camera'); gyroBtn.dataset.active = (mode==='gyro'); mouseBtn.dataset.active = (mode==='mouse');
+        if(mode==='camera') enableCamera();
+        else if(mode==='gyro') enableGyro();
+        else if(mode==='mouse') enableMouse();
+      }
+      need('inputMode').onclick = (e)=>{ const b=e.target.closest('button'); if(!b) return; setMode(b.dataset.mode); };
+      setMode(state.mode);
+
+      function applyQuality(q){
+        state.quality = q; save();
+        need('quality').querySelectorAll('button').forEach(b=>b.dataset.active = (b.dataset.q===q));
+        if(q==='perf'){ targetDPR = Math.min(1.0, devicePixelRatio); applyShadows(false); UI.bloom.dataset.on=false; }
+        else if(q==='bal'){ targetDPR = Math.min(1.5, devicePixelRatio); }
+        else { targetDPR = Math.min(2.0, devicePixelRatio); }
+        ensureRenderSize(true);
+        postDirty = true;
+      }
+      need('quality').onclick = (e)=>{ const b=e.target.closest('button'); if(!b) return; applyQuality(b.dataset.q); };
+      applyQuality(state.quality);
+
+      function setObject(k){ currentObject = k; document.querySelectorAll('#object button').forEach(b=>b.dataset.active = (b.dataset.k===k)); makeBox(); save(); }
+      need('object').onclick = (e)=>{ const b=e.target.closest('button'); if(!b) return; setObject(b.dataset.k); };
+      setObject(state.object);
+
+      need('theme').onclick = (e)=>{ const b=e.target.closest('button'); if(!b) return; document.querySelectorAll('#theme button').forEach(bb=>bb.dataset.active = (bb.dataset.t===b.dataset.t)); applyTheme(b.dataset.t); save(); };
+      document.querySelectorAll('#theme button').forEach(bb=>bb.dataset.active = (bb.dataset.t===theme)); applyTheme(theme);
+
+      // ===== Handlers =====
+      UI.debug.onclick = ()=>{ const on = !(UI.debug.dataset.on==='true'); UI.debug.dataset.on = on; need('webcam').style.display = on? 'block':'none'; need('debug').style.display = on? 'block':'none'; };
+      UI.shadows.onclick = ()=>{ const on = !(UI.shadows.dataset.on==='true'); UI.shadows.dataset.on = on; applyShadows(on); save(); };
+      UI.bloom.onclick = ()=>{ const on = !(UI.bloom.dataset.on==='true'); UI.bloom.dataset.on = on; state.bloomOn = on; postDirty = true; save(); };
+      UI.grid.onclick = ()=>{ if(grid){ grid.visible = !grid.visible; UI.grid.dataset.on = grid.visible; save(); } };
+      UI.particles.onclick = ()=>{ particlesOn = !particlesOn; UI.particles.dataset.on = particlesOn; if(particlesOn) ensureParticles(); else removeParticles(); save(); }
+      UI.physics.onclick = ()=>{ physicsOn = !physicsOn; UI.physics.dataset.on = physicsOn; save(); }
+      UI.mirror.onclick = ()=>{ mirror = !mirror; UI.mirror.dataset.on = mirror; save(); };
+      UI.invertY.onclick = ()=>{ invertY = !invertY; UI.invertY.dataset.on = invertY; updateTiltFromEye(); save(); };
+      UI.calibrate.onclick = ()=>{ targetEye.x=0; targetEye.y=0; eye.x=0; eye.y=0; gyroOffset={x:0,y:0}; toast('Calibrado'); save(); };
+      UI.reset.onclick = ()=>{ localStorage.removeItem('holoBox:v43'); location.reload(); };
+      UI.maze.onclick = ()=>{ const on=!(UI.maze.dataset.on==='true'); UI.maze.dataset.on=on; state.maze=on; makeBox(); save(); };
+      UI.shot.onclick = ()=>{ try{ const url = renderer.domElement.toDataURL('image/png'); const a=document.createElement('a'); a.href=url; a.download='holoBox_v43.png'; a.click(); }catch(e){ toast('No se pudo capturar', true);} };
+      UI.fs.onclick = async ()=>{
+        try{
+          if(!document.fullscreenElement){ await document.documentElement.requestFullscreen({navigationUI:'hide'}); } else { await document.exitFullscreen(); }
+        }catch(e){ toast('No se pudo cambiar a pantalla completa', true); }
+      };
+      UI.uiToggle.onclick = ()=>{ UI.root.classList.toggle('min'); save(); };
+
+      rScreen.oninput = ()=>{ screenW_cm = +rScreen.value; vScreen.textContent = (+rScreen.value).toFixed(1); updateScreenMeters(); makeBox(); save(); };
+      rDist.oninput = ()=>{ targetEye.z = (+rDist.value)/100; vDist.textContent = rDist.value; save(); };
+      rDepth.oninput = ()=>{ boxDepth_cm = +rDepth.value; vDepth.textContent = rDepth.value; makeBox(); save(); };
+      rSmooth.oninput = ()=>{ smooth = +rSmooth.value; vSmooth.textContent = rSmooth.value; save(); };
+      rExposure.oninput = ()=>{ renderer.toneMappingExposure = +rExposure.value; vExposure.textContent = (+rExposure.value).toFixed(2); save(); };
+      rBloom.oninput = ()=>{ vBloom.textContent = (+rBloom.value).toFixed(2); if(bloomPass) bloomPass.strength = parseFloat(rBloom.value); save(); };
+      rFriction.oninput = ()=>{ vFriction.textContent=(+rFriction.value).toFixed(2); state.friction=+rFriction.value; PHYS.mu_k = state.friction; save(); };
+      rBounce.oninput = ()=>{ vBounce.textContent=(+rBounce.value).toFixed(2); state.bounce=+rBounce.value; save(); };
+
+      // FX toggles
+      fxRoot.addEventListener('click', async (e)=>{
+        const b = e.target.closest('button'); if(!b) return;
+        const key = b.dataset.fx; const on = !(b.dataset.on==='true'); b.dataset.on = on; state[key==='rays'?'raysOn':key] = on;
+        if(key==='rays' && on){ const GR = await ensureGodRays(); if(!GR){ enableFakeRays(true); } else { enableFakeRays(true); } }
+        if(key==='rays' && !on){ enableFakeRays(false); }
+        if(key==='contact'){ if(on) ensureContactShadow(); else if(contactShadow){ group.remove(contactShadow); contactShadow=null; } }
+        if(key==='trail'){ if(on) ensureTrail(); else if(trail){ group.remove(trail); trail.geometry.dispose(); trail.material.dispose(); trail=null; } }
+        if(key==='floorPlus'){ makeBox(); }
+        postDirty = true; save();
+      });
+
+      // ===== Fake Rays (fallback) =====
+      let fakeRaysOn=false; function enableFakeRays(on){ fakeRaysOn = on; }
+
+      // ===== Interacciones micro =====
+      const raycaster = new THREE.Raycaster();
+      const clickPt = new THREE.Vector2();
+      const decalsGroup = new THREE.Group(); group.add(decalsGroup);
+      function placeDecal(p){
+        const s = 0.03 + Math.random()*0.02;
+        const g = new THREE.PlaneGeometry(s, s);
+        const m = new THREE.MeshBasicMaterial({ color:0xfff3bf, transparent:true, opacity:0.85 });
+        const mesh = new THREE.Mesh(g, m);
+        mesh.rotation.x = -Math.PI/2;
+        mesh.position.copy(p).setY(boardMesh.position.y+0.0005);
+        decalsGroup.add(mesh);
+        const ttl = 2.5 + Math.random()*2.0; mesh.userData.t=ttl;
+      }
+      function onCanvasClick(e){
+        clickPt.x = (e.clientX/innerWidth)*2 - 1;
+        clickPt.y = -(e.clientY/innerHeight)*2 + 1;
+        raycaster.setFromCamera(clickPt, camera);
+        const hits = raycaster.intersectObjects([obj, boardMesh, ...neonStrips].filter(Boolean), true);
+        if(hits.length){
+          const p = hits[0].point;
+          if(currentObject==='ball' && physicsOn){
+            const dir = new THREE.Vector3().subVectors(obj.position, p).setY(0).normalize();
+            ballState.vel.addScaledVector(dir, 0.25);
+          } else if(obj){
+            obj.scale.set(1.02,1.02,1.02);
+            setTimeout(()=>obj.scale.set(1,1,1), 120);
+            obj.rotation.y += 0.2;
+          }
+          if(e.altKey && state.decals && hits[0].object===boardMesh){
+            placeDecal(p);
+          }
+        }
+      }
+      need('three').addEventListener('click', onCanvasClick);
+
+      function vibrate(ms){ try{ navigator.vibrate && navigator.vibrate(ms); }catch{} }
+
+      // ===== Física mejorada =====
+      const ballState = {
+        pos: new THREE.Vector3(),
+        vel: new THREE.Vector3(),
+        omega: new THREE.Vector3(),
+        radius: 0.02
+      };
+
+      function stepBall(dt){
+        if(!physicsOn) return;
+        if(currentObject!=='ball' || !obj || !boardMesh) return;
+
+        // substeps (hasta 8, dt máx 1/120)
+        const maxStep = 1/120;
+        const n = Math.max(1, Math.min(8, Math.ceil(dt / maxStep)));
+        const h = dt / n;
+        for(let s=0; s<n; s++){ stepBallSub(h); }
+      }
+
+      function stepBallSub(h){
+        const w = screen.w, hScr = screen.h, d = boxDepth_cm/100;
+        const bw = w*0.78, bd = Math.min(d*0.7, hScr*0.65);
+        const boardY = -hScr/2 + ballState.radius + 0.006;
+        const boardZ = boardMesh.position.z;
+
+        const thX = clamp(tilt.x, -1, 1) * PHYS.thetaMax;
+        const thZ = clamp(tilt.y, -1, 1) * PHYS.thetaMax;
+
+        const ax_g = PHYS.g * Math.sin(thX);
+        const az_g = PHYS.g * Math.sin(thZ);
+
+        const cosX = Math.cos(thX), cosZ = Math.cos(thZ);
+        const Nmag = PHYS.g * (cosX * cosZ);
+
+        const mu_k = clamp(+state.friction ?? PHYS.mu_k, 0.01, 0.6);
+        const mu_s = PHYS.mu_s;
+        const c_roll = PHYS.c_roll;
+        const k_air = PHYS.k_air;
+
+        const vx = ballState.vel.x;
+        const vz = ballState.vel.z;
+        const v2 = vx*vx + vz*vz;
+        const v = Math.max(Math.sqrt(v2), 1e-9);
+
+        let ax = ax_g;
+        let az = az_g;
+
+        const aMag = Math.hypot(ax, az);
+        const staticThreshold = mu_s * Nmag;
+        if (v < 0.003 && aMag < staticThreshold){
+          ax = 0; az = 0;
+        } else {
+          const fk = mu_k * Nmag;
+          ax += -(vx / v) * fk;
+          az += -(vz / v) * fk;
+        }
+
+        if (v > 0.0005){
+          const fr = c_roll * PHYS.g;
+          ax += -(vx / v) * fr;
+          az += -(vz / v) * fr;
+          const drag = k_air * v2;
+          ax += -(vx / v) * drag;
+          az += -(vz / v) * drag;
+        }
+
+        ballState.vel.x += ax * h;
+        ballState.vel.z += az * h;
+
+        ballState.pos.x += ballState.vel.x * h;
+        ballState.pos.z += ballState.vel.z * h;
+
+        const maxX = bw/2 - ballState.radius*1.02;
+        const minX = -maxX;
+        const maxZ = bd/2 - ballState.radius*1.02 + boardZ;
+        const minZ = -bd/2 + ballState.radius*1.02 + boardZ;
+
+        let hitEdge = false;
+        const e = Math.max(0, Math.min(0.98, +state.bounce || 0.55));
+        const tangentLoss = Math.max(0, Math.min(0.9, mu_k*0.5));
+
+        if(ballState.pos.x < minX){ ballState.pos.x = minX; ballState.vel.x = -ballState.vel.x * e; ballState.vel.z *= (1 - tangentLoss); hitEdge = true; }
+        if(ballState.pos.x > maxX){ ballState.pos.x = maxX; ballState.vel.x = -ballState.vel.x * e; ballState.vel.z *= (1 - tangentLoss); hitEdge = true; }
+        if(ballState.pos.z < minZ){ ballState.pos.z = minZ; ballState.vel.z = -ballState.vel.z * e; ballState.vel.x *= (1 - tangentLoss); hitEdge = true; }
+        if(ballState.pos.z > maxZ){ ballState.pos.z = maxZ; ballState.vel.z = -ballState.vel.z * e; ballState.vel.x *= (1 - tangentLoss); hitEdge = true; }
+
+        obstacleSphereCollisions(mu_k, e);
+
+        obj.position.set(ballState.pos.x, boardY, ballState.pos.z);
+
+        const speed = Math.hypot(ballState.vel.x, ballState.vel.z);
+        if(speed > 1e-4){
+          const axis = new THREE.Vector3(-ballState.vel.z, 0, ballState.vel.x).normalize();
+          const angle = (speed * h) / ballState.radius;
+          obj.rotateOnWorldAxis(axis, angle);
+        }
+
+        if(hitEdge){ microShake(); impactGlitch(0.10); vibrate(10); }
+      }
+
+      function nearestPointAABB(p, bmin, bmax){
+        return new THREE.Vector3(
+          clamp(p.x, bmin.x, bmax.x),
+          clamp(p.y, bmin.y, bmax.y),
+          clamp(p.z, bmin.z, bmax.z)
+        );
+      }
+
+      function obstacleSphereCollisions(mu_k, e){
+        if(!obstaclesGroup || !obj) return;
+        const r = ballState.radius;
+        const center = obj.position.clone();
+        const tmp = new THREE.Box3();
+        obstaclesGroup.children.forEach(m=>{
+          m.updateMatrixWorld();
+          const bounds = tmp.setFromObject(m).clone();
+          const np = nearestPointAABB(center, bounds.min, bounds.max);
+          const delta = center.clone().sub(np);
+          const dist = delta.length();
+          if(dist < r){
+            let n;
+            if(dist > 1e-6){ n = delta.multiplyScalar(1/dist); }
+            else {
+              const dx = Math.min(Math.abs(center.x-bounds.min.x), Math.abs(bounds.max.x-center.x));
+              const dz = Math.min(Math.abs(center.z-bounds.min.z), Math.abs(bounds.max.z-center.z));
+              n = (dx < dz) ? new THREE.Vector3(sign(center.x - (bounds.min.x+bounds.max.x)/2),0,0) : new THREE.Vector3(0,0,sign(center.z - (bounds.min.z+bounds.max.z)/2));
+            }
+            const pen = r - dist + 1e-4;
+            ballState.pos.addScaledVector(n, pen);
+            obj.position.copy(ballState.pos);
+
+            const v = new THREE.Vector3(ballState.vel.x, 0, ballState.vel.z);
+            const vn = n.clone().multiplyScalar(v.dot(n));
+            const vt = v.clone().sub(vn);
+            const vAfter = vt.multiplyScalar(1 - Math.min(0.9, mu_k*0.6)).addScaledVector(n, -e*Math.abs(v.dot(n)));
+            ballState.vel.x = vAfter.x;
+            ballState.vel.z = vAfter.z;
+
+            impactGlitch(0.18);
+            vibrate(18);
+          }
+        });
+      }
+
+      function microShake(){ camera.position.z += 0.0015; }
+
+      // ===== Proyección de cámara =====
+      function updateCameraProjection(){
+        const halfW = screen.w/2, halfH = screen.h/2; const n=near, f=far;
+        const z = Math.max(0.05, eye.z);
+        const left   = n * (-halfW - eye.x) / z;
+        const right  = n * ( halfW - eye.x) / z;
+        const bottom = n * (-halfH - eye.y) / z;
+        const top    = n * ( halfH - eye.y) / z;
+        makePerspectiveOffCenter(camera, left, right, bottom, top, n, f);
+        camera.position.set(eye.x, eye.y, eye.z); camera.lookAt(eye.x, eye.y, 0);
+      }
+
+      // ===== Refracción dinámica (envMap) =====
+      let cubeCamera=null, cubeRT=null, cubeNeedsUpdate=false;
+      function ensureRefract(){
+        if(!state.refract) return;
+        if(!cubeCamera){
+          cubeRT = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, generateMipmaps: true });
+          cubeCamera = new THREE.CubeCamera(0.05, 10, cubeRT);
+          scene.add(cubeCamera);
+        }
+        cubeNeedsUpdate = true;
+      }
+
+      // ===== Resize / DPR =====
+      var sizeVec, lastDPR; // evitar TDZ
+      function ensureRenderSize(force=false){
+        if(innerWidth === 0 || innerHeight === 0) return;
+        if(!sizeVec) sizeVec = new THREE.Vector2();
+        if(lastDPR === undefined) lastDPR = targetDPR;
+        renderer.getSize(sizeVec);
+        const needResize = force || sizeVec.x !== innerWidth || sizeVec.y !== innerHeight || lastDPR !== targetDPR;
+        if(needResize){
+          renderer.setPixelRatio(targetDPR);
+          renderer.setSize(innerWidth, innerHeight, false);
+          camera.aspect = innerWidth/innerHeight;
+          camera.updateProjectionMatrix();
+          if(composer) composer.setSize(innerWidth, innerHeight);
+          lastDPR = targetDPR;
+        }
+      }
+
+      // ===== Telemetría opcional =====
+      let telemetry=[]; function pushTelemetry(t){ if(!state.telemetry) return; telemetry.push(t); if(telemetry.length>300) telemetry.shift(); localStorage.setItem('holoBox:telemetry', JSON.stringify(telemetry)); }
+
+      // ===== Loop =====
+      let tPrev = performance.now(), neonT=0, statsAccum=0;
+      
+      // --- Glitch FX timer (for impact bursts)
+      let glitchTimer = 0;
+      function impactGlitch(amount = 0.12){ glitchTimer = Math.min(1, glitchTimer + amount); }
+
+function frame(t){
+        const dt = Math.min(0.05, (t - tPrev) / 1000); tPrev = t;
+
+        if(faceTrackEnabled && faceBridge.ready){
+          const cx = faceBridge.cx, cy = faceBridge.cy;
+          const flipX = mirror ? -1 : 1;
+          const x = (0.5*flipX - cx*flipX) * screen.w;
+          const yRaw = (cy - 0.5) * screen.h;
+          const y = invertY ? -yRaw : yRaw;
+          targetEye.x = clamp(x, -screen.w*0.35, screen.w*0.35);
+          targetEye.y = clamp(y, -screen.h*0.35, screen.h*0.35);
+          const ipdN = faceBridge.ipd; if(ipdN>0){ const F=0.45; const est=Math.min(0.8, Math.max(0.25, (0.063/Math.max(0.02,ipdN))*F)); targetEye.z = 0.5*targetEye.z + 0.5*est; }
+          updateTiltFromEye();
+        }
+
+        const sp = Math.hypot(targetEye.x-eye.x, targetEye.y-eye.y, (targetEye.z-eye.z)*0.7);
+        const sDyn = Math.min(0.6, Math.max(0.02, smooth - sp*0.25));
+        const k = 1.0 - Math.pow(1.0 - sDyn, dt*60);
+        eye.x += (targetEye.x - eye.x)*k;
+        eye.y += (targetEye.y - eye.y)*k;
+        eye.z += (targetEye.z - eye.z)*k;
+
+        updateCameraProjection();
+        stepBall(dt);
+        if(state.trail) stepTrail();
+
+        if(particles){
+          neonT += dt;
+          const a = 0.6 + Math.sin(neonT*2.0)*0.1;
+          particles.material.opacity = state.flicker ? a : 0.7;
+          if(obj){
+            const pos = particles.geometry.attributes.position;
+            for(let i=0;i<pos.count;i+=5){
+              const x=pos.getX(i), y=pos.getY(i), z=pos.getZ(i);
+              const v = new THREE.Vector3(x,y,z).sub(obj.position);
+              const d = v.length();
+              if(d<0.5){
+                v.normalize().multiplyScalar(0.0005*(0.5-d));
+                pos.setXYZ(i, x - v.x, y, z - v.z);
+              }
+            }
+            pos.needsUpdate = true;
+          }
+        }
+
+        const fps = 1/dt; fpsAvg = fpsAvg + (fps - fpsAvg)*0.05;
+        if(fpsAvg < 30 && targetDPR > 0.8){ targetDPR = Math.max(0.7, targetDPR - 0.05); ensureRenderSize(); }
+        else if(fpsAvg > 58){
+          const cap = (state.quality==='perf'?1:state.quality==='bal'?1.5:2);
+          if(targetDPR < Math.min(cap, devicePixelRatio)){ targetDPR = Math.min(Math.min(cap, devicePixelRatio), targetDPR + 0.03); ensureRenderSize(); }
+        }
+
+        ensureRenderSize();
+
+        if(state.refract){ ensureRefract(); if(cubeNeedsUpdate && cubeCamera){ obj.visible=false; cubeCamera.position.copy(obj.position); cubeCamera.update(renderer, scene); obj.visible=true; obj.material.envMap = cubeRT.texture; obj.material.needsUpdate = true; cubeNeedsUpdate=false; } }
+
+        if(glitchTimer>0){
+          if(caVigPass){ caVigPass.uniforms.amount.value = 0.0018 + glitchTimer*0.003; }
+          if(bloomPass){ bloomPass.strength = parseFloat(rBloom.value) + glitchTimer*0.4; }
+          glitchTimer = Math.max(0, glitchTimer - dt*1.8);
+          postDirty = true;
+        } else {
+          if(caVigPass){ caVigPass.uniforms.amount.value = 0.0018; }
+        }
+
+        if(contactShadow && obj){
+          const s = THREE.MathUtils.clamp(0.12 + Math.hypot(ballState.vel.x, ballState.vel.z)*0.04, 0.08, 0.22);
+          contactShadow.scale.setScalar(s);
+          contactShadow.position.x = obj.position.x;
+          contactShadow.position.z = obj.position.z;
+        }
+
+        if(decalsGroup.children.length){
+          for(let i=decalsGroup.children.length-1;i>=0;i--){
+            const m = decalsGroup.children[i]; const dtl = 1/60;
+            m.userData.t -= dtl;
+            if(m.userData.t<0){ decalsGroup.remove(m); m.geometry.dispose(); m.material.dispose(); }
+            else { m.material.opacity = Math.max(0, Math.min(1, m.userData.t/2.0)); }
+          }
+        }
+
+        if (postDirty){ ensureComposer(); layoutComposer(); postDirty=false; }
+        if(state.bloomOn || state.ssao || state.dof || state.motion || state.cavig || state.grain || targetDPR<1.0){
+          if(innerWidth>0 && innerHeight>0){ composer.render(); }
+        } else {
+          renderer.render(scene, camera);
+        }
+
+        statsAccum += dt;
+        if(statsAccum > 0.25){
+          need('stats').textContent = `eye: ${(eye.x*100).toFixed(1)}cm, ${(eye.y*100).toFixed(1)}cm, ${(eye.z*100).toFixed(0)}cm | screen: ${screenW_cm.toFixed(1)}cm × ${(screen.h*100).toFixed(1)}cm | dpr:${targetDPR.toFixed(2)} fps:${fpsAvg.toFixed(0)} | tilt: ${tilt.x.toFixed(2)}, ${tilt.y.toFixed(2)} | invertY:${invertY?'on':'off'}`;
+          statsAccum = 0;
+          pushTelemetry({t:Date.now(), fps:fpsAvg, dpr:targetDPR});
+        }
+
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+
+      addEventListener('resize', ()=>{ updateScreenMeters(); makeBox(); ensureRenderSize(true); postDirty=true; });
+      document.addEventListener('visibilitychange', ()=>{
+        if(document.hidden){ targetDPR = Math.min(targetDPR, 1.0); ensureRenderSize(true); }
+      });
+
+      // ===== Onboarding =====
+      const onboarding = need('onboarding');
+      const tiltBar = need('tiltBar'), tiltPct = need('tiltPct');
+      const confirmBtn = need('confirmOnboarding'), skipBtn = need('skipOnboarding');
+      let stableTimer = 0;
+      if(!state.seenOnboarding){ onboarding.hidden = false; }
+      function closeOnboarding(){
+        try{ onboarding.remove(); }catch{ onboarding.hidden = true; }
+        state.seenOnboarding = true; save(); toast('¡Vamos!');
+      }
+      skipBtn.onclick = closeOnboarding;
+      confirmBtn.onclick = closeOnboarding;
+      setInterval(()=>{
+        const norm = Math.min(1, (Math.abs(lastGamma)/5 + Math.abs(lastBeta)/5)/2);
+        const pct = Math.round((1-norm)*100);
+        tiltBar.style.width = pct + '%'; tiltPct.textContent = pct + '%';
+        if(pct > 85){ stableTimer += 200; } else { stableTimer = 0; }
+      }, 200);
+
+      // ===== Context lost/restore =====
+      need('three').addEventListener('webglcontextlost', (e)=>{ e.preventDefault(); toast('Contexto WebGL perdido. Restaurando…', true); });
+      need('three').addEventListener('webglcontextrestored', ()=>{
+        toast('Contexto restaurado');
+        postDirty = true; ensureRenderSize(true);
+      });
+
+      try{ renderer.compile(scene, camera); }catch{}
+
+      addEventListener('keydown', (e)=>{
+        if(e.key==='h') UI.root.classList.toggle('min');
+        if(e.key==='f') UI.fs.click();
+        if(e.key==='p') UI.physics.click();
+        if(e.key==='g') UI.grid.click();
+        if(e.key==='b') UI.bloom.click();
+        if(e.key==='s') UI.shadows.click();
+        if(e.key==='m') UI.maze.click();
+        save();
+      });
+
+      window._three = { THREE, renderer, scene, camera, group };
+    }
+  </script>
+
+  <!-- MediaPipe para eyes/iris -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+  <script>
+    (function(){
+      const video = document.getElementById('webcam');
+      const debug = document.getElementById('debug');
+      const ctx = debug.getContext('2d');
+      const faceMesh = new FaceMesh({locateFile: (file)=> `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
+      faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+
+      let FACE_FPS = 24, lastFaceTS = 0;
+      faceMesh.onResults(onResults);
+      let cam = null;
+
+      async function start(){
+        try{
+          cam = new Camera(video, {
+            onFrame: async () => {
+              if (video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) return;
+              const now = performance.now();
+              if (now - lastFaceTS < (1000/FACE_FPS)) return;
+              lastFaceTS = now;
+              await faceMesh.send({image: video});
+            },
+            width: 640, height: 480
+          });
+          cam.start();
+        } catch(e){ console.warn(e); }
+      }
+      start();
+
+      function onResults(res){
+        if(!res.multiFaceLandmarks || !res.multiFaceLandmarks.length || !res.image){ return; }
+        const landmarks = res.multiFaceLandmarks[0];
+        const L = [468,469,470,471], R = [473,474,475,476];
+        const lc = centroid(L.map(i=>landmarks[i])); const rc = centroid(R.map(i=>landmarks[i]));
+        const cx = (lc.x + rc.x)/2, cy = (lc.y + rc.y)/2; const ipd = Math.hypot(lc.x-rc.x, lc.y-rc.y);
+        if(window.__setFace) window.__setFace(cx, cy, ipd);
+        if(debug.style.display !== 'none'){
+          const w = res.image.width || 640, h = res.image.height || 480;
+          if(w>0 && h>0){
+            debug.width = w; debug.height = h;
+            ctx.save(); ctx.translate(debug.width,0); ctx.scale(-1,1);
+            ctx.drawImage(res.image, 0, 0, debug.width, debug.height);
+            drawIris(lc, rc);
+            ctx.restore();
+          }
+        }
+      }
+      function drawIris(lc, rc){ ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(0,255,255,.9)'; ctx.fillStyle = 'rgba(0,255,255,.25)'; [lc, rc].forEach(p=>{ ctx.beginPath(); ctx.arc(p.x*debug.width, p.y*debug.height, 8, 0, Math.PI*2); ctx.fill(); ctx.stroke(); }); ctx.beginPath(); ctx.moveTo(lc.x*debug.width, lc.y*debug.height); ctx.lineTo(rc.x*debug.width, rc.y*debug.height); ctx.stroke(); }
+      function centroid(arr){ const n = arr.length; let x=0,y=0; for(const p of arr){ x+=p.x; y+=p.y; } return {x:x/n, y:y/n}; }
+
+      document.addEventListener('visibilitychange', ()=>{
+        try{
+          if(document.hidden){ if(cam && cam.stop) cam.stop(); }
+          else { if(cam && cam.start) cam.start(); }
+        }catch(e){/* noop */}
+      });
+    })();
+  </script>
+</body>
+</html>
