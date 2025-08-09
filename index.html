@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Caja 3D (15 cm) — Parallax + Eye Tracking</title>
+  <style>
+    :root{
+      --bg:#0b0c10; --fg:#eaeef7; --muted:#8aa0b5; --accent:#6dd3ff; --ok:#55efc4; --warn:#ffd166; --err:#ff6b6b;
+    }
+    html, body { height:100%; }
+    body { margin:0; background:#000; color:var(--fg); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+    #app { position:fixed; inset:0; overflow:hidden; }
+    #three { width:100%; height:100%; display:block; }
+
+    /* UI flotante */
+    .ui { position:fixed; left:0; right:0; bottom:0; padding:10px env(safe-area-inset-right) calc(10px + env(safe-area-inset-bottom)) env(safe-area-inset-left);
+      display:flex; gap:8px; flex-wrap:wrap; align-items:center; justify-content:center; pointer-events:auto; }
+    .panel { backdrop-filter: blur(14px) saturate(1.2); background: rgba(10,12,20,.55); border:1px solid rgba(255,255,255,.12);
+      border-radius:16px; padding:10px 12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .btn, .seg, .slider { color:var(--fg); font-weight:600; letter-spacing:.2px; }
+    .btn { border:1px solid rgba(255,255,255,.12); background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02)); border-radius:12px; padding:10px 12px; cursor:pointer; user-select:none; }
+    .btn[data-on="true"] { outline:1.6px solid var(--accent); box-shadow: 0 0 0 6px rgba(109,211,255,.12) inset; }
+    .seg { display:flex; border:1px solid rgba(255,255,255,.12); border-radius:12px; overflow:hidden; }
+    .seg button { all:unset; padding:10px 12px; cursor:pointer; background:rgba(255,255,255,.04); }
+    .seg button[data-active="true"] { background:rgba(109,211,255,.18); color:white; }
+    .field { display:flex; align-items:center; gap:8px; }
+    .field label { font-size:12px; color:var(--muted); }
+    .field input[type="range"] { width:120px; }
+
+    #toast { position:fixed; top:10px; left:0; right:0; margin:auto; width:max(260px, 40vw); text-align:center; pointer-events:none; }
+    #toast .msg { display:inline-block; padding:10px 14px; border-radius:12px; background:rgba(15,18,30,.75); border:1px solid rgba(255,255,255,.12); }
+    #stats { position:fixed; top:0; right:0; padding:8px 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size:12px; opacity:.85; }
+
+    /* Video y debug (ocultos por defecto) */
+    #webcam { position:fixed; right:8px; top:8px; width:200px; height:auto; transform:scaleX(-1); border-radius:10px; border:1px solid rgba(255,255,255,.12); display:none; }
+    #debug { position:fixed; right:8px; top:8px; width:200px; height:auto; display:none; pointer-events:none; }
+
+    /* Bisel / máscara para simular marco del teléfono */
+    .bezel { position:fixed; inset:0; pointer-events:none; box-shadow: inset 0 0 0 12px rgba(0,0,0,.85), inset 0 0 32px rgba(0,0,0,.85), inset 0 0 120px rgba(0,0,0,.85); border-radius: calc(24px + env(safe-area-inset-left)); }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <canvas id="three"></canvas>
+    <div class="bezel" aria-hidden="true"></div>
+  </div>
+
+  <!-- UI -->
+  <div class="ui">
+    <div class="panel">
+      <div class="seg" id="inputMode">
+        <button data-mode="camera" title="Tracking de ojos por cámara">Cámara</button>
+        <button data-mode="gyro" title="Parallax por giroscopio">Giroscopio</button>
+      </div>
+      <button class="btn" id="toggleDebug">Debug</button>
+      <button class="btn" id="calibrate">Calibrar</button>
+      <div class="field slider">
+        <label for="screenW">Ancho pantalla (cm)</label>
+        <input id="screenW" type="range" min="5" max="9" step="0.1" value="7" />
+        <span id="screenWVal">7.0</span>
+      </div>
+      <div class="field slider">
+        <label for="dist">Distancia (cm)</label>
+        <input id="dist" type="range" min="20" max="80" step="1" value="40" />
+        <span id="distVal">40</span>
+      </div>
+      <div class="field slider">
+        <label for="depth">Profundidad caja (cm)</label>
+        <input id="depth" type="range" min="5" max="20" step="0.5" value="15" />
+        <span id="depthVal">15</span>
+      </div>
+      <div class="field slider">
+        <label for="smoothing">Suavizado</label>
+        <input id="smoothing" type="range" min="0" max="0.6" step="0.02" value="0.18" />
+        <span id="smoothingVal">0.18</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+  <div id="stats"></div>
+  <video id="webcam" autoplay playsinline muted></video>
+  <canvas id="debug"></canvas>
+
+  <!-- THREE.JS (ESM) -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+    // ====== Utiles ======
+    const lerp = (a,b,t)=>a+(b-a)*t;
+    const clamp = (v,lo,hi)=>Math.min(hi, Math.max(lo,v));
+
+    // ====== Canvas y renderer ======
+    const canvas = document.getElementById('three');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:false, powerPreference:'high-performance' });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.physicallyCorrectLights = true;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x05060a);
+
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const env = new RoomEnvironment(renderer);
+    const envTex = pmrem.fromScene(env, 0.04).texture;
+    scene.environment = envTex;
+
+    // ====== Cámara con proyección off-axis ======
+    const near = 0.01, far = 2.5; // suficiente para 15-20 cm de caja
+    const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, near, far);
+    camera.position.set(0, 0, 0.4); // 40 cm frente a la pantalla
+
+    // Tamaño "físico" de la pantalla en metros (ajustable por UI)
+    let screenW_cm = 7.0;
+    const screen = { w: screenW_cm/100, h: (screenW_cm/100) * (innerHeight/innerWidth) };
+    let boxDepth_cm = 15.0; // UI
+
+    function updateScreenMeters(){
+      screen.w = (screenW_cm/100);
+      screen.h = screen.w * (innerHeight/innerWidth);
+    }
+
+    function makePerspectiveOffCenter(cam, left, right, bottom, top, near, far){
+      const x = 2*near/(right-left);
+      const y = 2*near/(top-bottom);
+      const a = (right+left)/(right-left);
+      const b = (top+bottom)/(top-bottom);
+      const c = -(far+near)/(far-near);
+      const d = -2*far*near/(far-near);
+      cam.projectionMatrix.set(
+        x, 0, a, 0,
+        0, y, b, 0,
+        0, 0, c, d,
+        0, 0,-1, 0
+      );
+    }
+
+    // ====== Caja y escena ======
+    const group = new THREE.Group();
+    scene.add(group);
+
+    // Caja interior (mirada desde arriba, tapa abierta en z=0)
+    function makeBox(){
+      group.clear();
+      const depth = boxDepth_cm/100; // m
+      const w = screen.w, h = screen.h, d = depth;
+      // Paredes (BackSide para ver interior)
+      const wallMat = new THREE.MeshPhysicalMaterial({ color:0x0b0c10, roughness:0.9, metalness:0.0, side:THREE.BackSide, clearcoat:0.2, clearcoatRoughness:0.7 });
+      const boxGeo = new THREE.BoxGeometry(w, h, d);
+      const walls = new THREE.Mesh(boxGeo, wallMat);
+      walls.position.set(0,0,-d/2);
+      group.add(walls);
+
+      // Suelo ligeramente brillante
+      const floorMat = new THREE.MeshPhysicalMaterial({ color:0x0d1117, roughness:0.6, metalness:0.2, reflectivity:0.4 });
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(w*0.98, h*0.98), floorMat);
+      floor.rotation.x = -Math.PI/2;
+      floor.position.set(0, -h/2 + 0.002, -d + 0.001);
+      group.add(floor);
+
+      // Pirámide de cristal (base cuadrada)
+      const pyrH = Math.min(d*0.66, h*0.6);
+      const pyrR = Math.min(w,h)*0.16;
+      const pyrGeo = new THREE.ConeGeometry(pyrR, pyrH, 4, 1, false);
+      pyrGeo.rotateY(Math.PI/4); // alinear a base cuadrada
+      const glass = new THREE.MeshPhysicalMaterial({
+        color:0xffffff,
+        metalness:0.0,
+        roughness:0.08,
+        transmission:1.0,
+        thickness:0.02,
+        ior:1.5,
+        envMapIntensity:1.2,
+        attenuationColor: new THREE.Color(0xa5d8ff),
+        attenuationDistance: 2.0,
+        reflectivity: 0.1,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.1
+      });
+      const pyramid = new THREE.Mesh(pyrGeo, glass);
+      pyramid.position.set(0, 0, -d*0.55);
+      group.add(pyramid);
+
+      // Luz suave y acentos
+      const hemi = new THREE.HemisphereLight(0x99bbff, 0x101318, 0.6);
+      scene.add(hemi);
+      const key = new THREE.SpotLight(0x9cc9ff, 1.1, 3.0, Math.PI/6, 0.35, 1.0);
+      key.position.set(w*0.3, h*0.35, 0.25);
+      key.target = pyramid;
+      scene.add(key);
+      const rim = new THREE.DirectionalLight(0xffffff, 0.4);
+      rim.position.set(-w*0.5, -h*0.6, -d*0.4);
+      scene.add(rim);
+    }
+    makeBox();
+
+    // ====== Seguimiento de "ojos" (entrada fusionada) ======
+    const eye = { x:0, y:0, z:0.40 }; // metros, relativo al centro de pantalla
+    const targetEye = { x:0, y:0, z:0.40 };
+    let smooth = 0.18;
+
+    // Proyección off-axis según posición del ojo
+    function updateCameraProjection(){
+      // límites del rectángulo de la pantalla en Z=0
+      const halfW = screen.w/2, halfH = screen.h/2;
+      const n = near, f = far;
+      const z = Math.max(0.05, eye.z); // evitar división por cero
+      const left   = n * (-halfW - eye.x) / z;
+      const right  = n * ( halfW - eye.x) / z;
+      const bottom = n * (-halfH - eye.y) / z;
+      const top    = n * ( halfH - eye.y) / z;
+      makePerspectiveOffCenter(camera, left, right, bottom, top, n, f);
+      // mantén cámara mirando perpendicular al plano de la pantalla
+      camera.position.set(eye.x, eye.y, eye.z);
+      camera.lookAt(eye.x, eye.y, 0);
+    }
+
+    // ====== Gyro fallback ======
+    let gyroEnabled = false;
+    function enableGyro(){
+      function handler(ev){
+        const g = (ev.gamma||0); // izq-der (-90 a 90)
+        const b = (ev.beta||0);  // arriba-abajo (-180 a 180)
+        // Mapea a +/- 1 cm en X/Y
+        targetEye.x = clamp((g/30) * (screen.w*0.15), -screen.w*0.2, screen.w*0.2);
+        targetEye.y = clamp((b/45) * (screen.h*0.15), -screen.h*0.2, screen.h*0.2);
+      }
+      if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function'){
+        DeviceMotionEvent.requestPermission().then(state=>{
+          if(state==='granted'){
+            window.addEventListener('deviceorientation', handler);
+            gyroEnabled = true; toast('Giroscopio activo');
+          } else toast('Permiso de giroscopio denegado', true);
+        }).catch(()=>toast('Giroscopio no disponible', true));
+      }else{
+        window.addEventListener('deviceorientation', handler);
+        gyroEnabled = true; toast('Giroscopio activo');
+      }
+    }
+
+    // ====== Face tracking (MediaPipe FaceMesh en script no-módulo) ======
+    let faceTrackEnabled = false;
+    const faceBridge = { // actualizado por el script global
+      ready:false,
+      cx:0.5, cy:0.5, ipd:0.06, // normalizados a [0..1] en el frame de la cámara
+    };
+    window.__setFace = (cx, cy, ipd)=>{ faceBridge.ready = true; faceBridge.cx = cx; faceBridge.cy = cy; faceBridge.ipd = ipd; };
+
+    async function enableCamera(){
+      const v = document.getElementById('webcam');
+      try{
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:'user', width:{ideal:640}, height:{ideal:480} }, audio:false });
+        v.srcObject = stream; v.play();
+        faceTrackEnabled = true; toast('Cámara activa (tracking de ojos)');
+      }catch(e){ toast('No se pudo acceder a la cámara', true); }
+    }
+
+    // ====== UI ======
+    const d = (id)=>document.getElementById(id);
+    const btnDebug = d('toggleDebug');
+    const btnCal = d('calibrate');
+    const rScreen = d('screenW');
+    const rDist = d('dist');
+    const rDepth = d('depth');
+    const rSmooth = d('smoothing');
+    const vScreen = d('screenWVal');
+    const vDist = d('distVal');
+    const vDepth = d('depthVal');
+    const vSmooth = d('smoothingVal');
+
+    vScreen.textContent = (+rScreen.value).toFixed(1);
+    vDist.textContent = rDist.value;
+    vDepth.textContent = rDepth.value;
+    vSmooth.textContent = rSmooth.value;
+
+    rScreen.oninput = ()=>{ screenW_cm = +rScreen.value; vScreen.textContent = screenW_cm.toFixed(1); updateScreenMeters(); makeBox(); };
+    rDist.oninput = ()=>{ targetEye.z = (+rDist.value)/100; vDist.textContent = rDist.value; };
+    rDepth.oninput = ()=>{ boxDepth_cm = +rDepth.value; vDepth.textContent = rDepth.value; makeBox(); };
+    rSmooth.oninput = ()=>{ smooth = +rSmooth.value; vSmooth.textContent = rSmooth.value; };
+
+    // Input mode toggle
+    const seg = document.getElementById('inputMode');
+    const [camBtn, gyroBtn] = seg.querySelectorAll('button');
+    function setMode(mode){
+      camBtn.dataset.active = (mode==='camera');
+      gyroBtn.dataset.active = (mode==='gyro');
+      if(mode==='camera'){
+        enableCamera();
+      } else {
+        enableGyro();
+      }
+    }
+    setMode('camera');
+
+    // Debug toggles webcam & overlay
+    let debugOn = false;
+    btnDebug.onclick = ()=>{
+      debugOn = !debugOn; btnDebug.dataset.on = debugOn;
+      document.getElementById('webcam').style.display = debugOn? 'block':'none';
+      document.getElementById('debug').style.display = debugOn? 'block':'none';
+    };
+
+    // Calibración simple: centra X/Y actuales y fija distancia al slider
+    btnCal.onclick = ()=>{
+      targetEye.x = 0; targetEye.y = 0; eye.x = 0; eye.y = 0; targetEye.z = (+rDist.value)/100; toast('Calibrado: vista centrada');
+    };
+
+    seg.onclick = (e)=>{
+      const b = e.target.closest('button'); if(!b) return; setMode(b.dataset.mode);
+    };
+
+    // ====== Bucle ======
+    let tPrev = performance.now();
+    function frame(t){
+      const dt = Math.min(0.05, (t - tPrev) / 1000);
+      tPrev = t;
+
+      // Actualizar target desde FaceMesh si activo
+      if(faceTrackEnabled && faceBridge.ready){
+        const cx = faceBridge.cx; // [0..1]
+        const cy = faceBridge.cy; // [0..1]
+        // mapeo: centro pantalla (0.5,0.5) ==> (0,0)
+        // invertir X por espejo (selfie)
+        const x = (0.5 - cx) * screen.w; // metros
+        const y = (cy - 0.5) * screen.h; // metros
+        targetEye.x = clamp(x, -screen.w*0.35, screen.w*0.35);
+        targetEye.y = clamp(y, -screen.h*0.35, screen.h*0.35);
+        // Profundidad opcional basada en IPD (aprox). 6.3 cm típico.
+        const ipdN = faceBridge.ipd; // en fracción del ancho del frame
+        if(ipdN>0){
+          const F = 0.45; // factor empírico
+          const est = clamp((0.063 / Math.max(0.02, ipdN)) * F, 0.25, 0.8); // metros
+          targetEye.z = 0.5*targetEye.z + 0.5*est; // mezcla con slider
+        }
+      }
+
+      // Suavizado exponencial
+      const k = 1.0 - Math.pow(1.0 - clamp(smooth,0,0.6), dt*60);
+      eye.x = lerp(eye.x, targetEye.x, k);
+      eye.y = lerp(eye.y, targetEye.y, k);
+      eye.z = lerp(eye.z, targetEye.z, k);
+
+      updateCameraProjection();
+
+      renderer.setSize(innerWidth, innerHeight, false);
+      camera.aspect = innerWidth/innerHeight; // no afecta off-axis
+      renderer.render(scene, camera);
+
+      // Stats
+      document.getElementById('stats').textContent = `eye: ${(eye.x*100).toFixed(1)}cm, ${(eye.y*100).toFixed(1)}cm, ${(eye.z*100).toFixed(0)}cm  | screen: ${screenW_cm.toFixed(1)}cm × ${(screen.h*100).toFixed(1)}cm`;
+
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+
+    // Resize
+    addEventListener('resize', ()=>{ updateScreenMeters(); makeBox(); });
+
+    // Toast helper
+    let toastT=null; function toast(txt, warn=false){
+      const el = document.getElementById('toast');
+      el.innerHTML = `<span class="msg" style="border-color:${warn?'rgba(255,107,107,.3)':'rgba(109,211,255,.3)'}">${txt}</span>`;
+      clearTimeout(toastT); toastT = setTimeout(()=> el.innerHTML='', 2400);
+    }
+
+    // Expone por si querés jugar en consola
+    window._three = { THREE, renderer, scene, camera, group };
+  </script>
+
+  <!-- MediaPipe FaceMesh (no módulo). Muy estable y liviano para landmarks faciales + iris. -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+  <script>
+    // Este script usa las globals de MediaPipe y actualiza window.__setFace(cx, cy, ipd)
+    (function(){
+      const video = document.getElementById('webcam');
+      const debug = document.getElementById('debug');
+      const ctx = debug.getContext('2d');
+
+      const faceMesh = new FaceMesh({locateFile: (file)=> `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
+      faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true, // iris landmarks
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+
+      faceMesh.onResults(onResults);
+
+      let cam = null;
+      async function start(){
+        try{
+          cam = new Camera(video, {
+            onFrame: async () => {
+              await faceMesh.send({image: video});
+            }, width: 640, height: 480
+          });
+          cam.start();
+        }catch(e){ console.warn(e); }
+      }
+      start();
+
+      function onResults(res){
+        if(!res.multiFaceLandmarks || !res.multiFaceLandmarks.length){ return; }
+        const landmarks = res.multiFaceLandmarks[0];
+        // Indices de iris (según MediaPipe FaceMesh con refineLandmarks)
+        const L = [468,469,470,471];
+        const R = [473,474,475,476];
+        const lc = centroid(L.map(i=>landmarks[i]));
+        const rc = centroid(R.map(i=>landmarks[i]));
+        const cx = (lc.x + rc.x)/2; // [0..1]
+        const cy = (lc.y + rc.y)/2; // [0..1]
+        const ipd = Math.hypot(lc.x-rc.x, lc.y-rc.y); // en ancho-normalizado del frame
+        if(window.__setFace) window.__setFace(cx, cy, ipd);
+
+        // Debug draw
+        if(debug.style.display !== 'none'){
+          debug.width = res.image.width; debug.height = res.image.height;
+          ctx.save();
+          // espejo horizontal para coincidir con preview
+          ctx.translate(debug.width,0); ctx.scale(-1,1);
+          ctx.drawImage(res.image, 0, 0, debug.width, debug.height);
+          drawIris(lc, rc);
+          ctx.restore();
+        }
+      }
+
+      function drawIris(lc, rc){
+        ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(0,255,255,.9)'; ctx.fillStyle = 'rgba(0,255,255,.25)';
+        [lc, rc].forEach(p=>{ ctx.beginPath(); ctx.arc(p.x*debug.width, p.y*debug.height, 8, 0, Math.PI*2); ctx.fill(); ctx.stroke(); });
+        // línea IPD
+        ctx.beginPath(); ctx.moveTo(lc.x*debug.width, lc.y*debug.height); ctx.lineTo(rc.x*debug.width, rc.y*debug.height); ctx.stroke();
+      }
+
+      function centroid(arr){
+        const n = arr.length; let x=0,y=0; for(const p of arr){ x+=p.x; y+=p.y; } return {x:x/n, y:y/n};
+      }
+    })();
+  </script>
+</body>
+</html>
